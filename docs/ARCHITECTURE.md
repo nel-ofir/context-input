@@ -5,6 +5,9 @@
 ```text
 focused UI element
       │
+      ├─ stale/missing and frontmost app declares
+      │  terminal-shell support ──────────────► opaque terminal fallback
+      │
       ├─ not editable / secure ───────────────► ignore
       │
       ▼
@@ -27,6 +30,13 @@ The focus monitor polls at 250 ms and waits 140 ms after a new focused element a
 ## Why Accessibility comes before OCR
 
 Accessibility text has exact characters and layout geometry, works without capturing pixels, and requires only the permission already needed to observe global focus. Screenshot OCR would add Screen Recording permission, more latency, and a second source of Hebrew recognition errors. The reader therefore fails closed when an app hides its text.
+
+GPU-rendered terminals are a narrow exception to the text requirement. When the
+frontmost application declares a `Shell` document role or the
+`com.apple.terminal.shell-script` content type, an opaque accessibility window
+can stand in for a missing or stale focused element. This signal comes from the
+application bundle rather than its name. Native text fields and other controls
+inside the same application still use the normal classifier.
 
 ## Packaging
 

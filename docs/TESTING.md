@@ -1,14 +1,20 @@
 # ContextInput debug test checklist
 
-## Version 0.1.7 (Build 8)
+## Version 0.1.8 (Build 9)
 
-Confirm that Settings shows **Version 0.1.7 (Build 8)** beneath the ContextInput
+Confirm that Settings shows **Version 0.1.8 (Build 9)** beneath the ContextInput
 title before testing this build.
 
 - Press Command-W while Settings is focused. The window closes, while the אA
   menu-bar app continues running and can reopen Settings.
 - Focus the Codex embedded terminal while Hebrew is active. ContextInput selects
   the configured English keyboard.
+- Focus a terminal implemented with an opaque custom rendering surface, such as
+  Warp, while Hebrew is active. Settings must record that application, describe
+  the focused element as a terminal, and select the configured English keyboard.
+- As negative controls, confirm Cursor's standard embedded terminal still selects
+  English, and a normal search or text field inside a terminal-capable app is
+  classified from its own draft/context rather than forced to English.
 - Focus Safari's address bar when it contains an English URL on a Hebrew page.
   The field's existing English value takes priority and selects English.
 - Focus a field with an existing Hebrew or English draft. The draft takes

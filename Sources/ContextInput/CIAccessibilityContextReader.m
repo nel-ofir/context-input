@@ -1,4 +1,5 @@
 #import "CIAccessibilityContextReader.h"
+#import "CIApplicationCapabilities.h"
 #import "CIContextTextSanitizer.h"
 #import "CIDraftSanitizer.h"
 #import <AppKit/AppKit.h>
@@ -70,10 +71,15 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
 
 @interface CIAccessibilityContextReader ()
 @property(nonatomic) AXUIElementRef systemWideElement;
+@property(nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *terminalCapabilityCache;
 - (id)contextRootObjectForFocused:(AXUIElementRef)focused
                             window:(AXUIElementRef)window
                       focusedFrame:(CGRect)focusedFrame
                    hasFocusedFrame:(BOOL)hasFocusedFrame;
+- (nullable AXUIElementRef)copyOpaqueTerminalElementForApplication:
+    (NSRunningApplication *)application CF_RETURNS_RETAINED;
+- (BOOL)applicationDeclaresTerminalSupport:(NSRunningApplication *)application;
+- (BOOL)applicationForElementDeclaresTerminalSupport:(AXUIElementRef)element;
 @end
 
 @implementation CIAccessibilityContextReader
@@ -82,6 +88,7 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
     self = [super init];
     if (self) {
         _systemWideElement = AXUIElementCreateSystemWide();
+        _terminalCapabilityCache = [NSMutableDictionary dictionary];
     }
     return self;
 }
@@ -109,6 +116,7 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
 }
 
 - (AXUIElementRef)copyFocusedEditableElement {
+    NSRunningApplication *frontmostApplication = NSWorkspace.sharedWorkspace.frontmostApplication;
     CFTypeRef copied = NULL;
     AXError error = AXUIElementCopyAttributeValue(
         self.systemWideElement,
@@ -119,10 +127,22 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
         if (copied != NULL) {
             CFRelease(copied);
         }
-        return NULL;
+        return [self copyOpaqueTerminalElementForApplication:frontmostApplication];
     }
 
     AXUIElementRef focused = (AXUIElementRef)copied;
+    pid_t focusedProcessIdentifier = 0;
+    BOOL hasFocusedProcess = AXUIElementGetPid(focused, &focusedProcessIdentifier) == kAXErrorSuccess;
+    if (frontmostApplication != nil &&
+        (!hasFocusedProcess || focusedProcessIdentifier != frontmostApplication.processIdentifier)) {
+        // Custom rendering frameworks may make their window frontmost without
+        // publishing a new focused UI element. Never reuse the stale element
+        // from the previous app; terminal-capable hosts can instead provide an
+        // opaque window/application fallback.
+        CFRelease(focused);
+        return [self copyOpaqueTerminalElementForApplication:frontmostApplication];
+    }
+
     NSString *role = CIAXStringAttribute(focused, kAXRoleAttribute);
     role = role != nil ? role : @"";
     NSNumber *enabled = CIAXAttribute(focused, kAXEnabledAttribute);
@@ -458,7 +478,71 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
         }
         currentObject = parentObject;
     }
-    return NO;
+
+    // Some GPU-rendered apps intentionally expose only an opaque focused
+    // container, so there is no text role or terminal keyword to inspect. Use
+    // the bundle's declared document capabilities as a generic fallback. This
+    // is limited to opaque roles, ensuring native search fields and other
+    // controls inside the same app continue through the normal text path.
+    NSString *role = CIAXStringAttribute(element, kAXRoleAttribute);
+    return [CIApplicationCapabilities isOpaqueAccessibilityRole:role] &&
+        [self applicationForElementDeclaresTerminalSupport:element];
+}
+
+- (BOOL)applicationForElementDeclaresTerminalSupport:(AXUIElementRef)element {
+    pid_t processIdentifier = 0;
+    if (AXUIElementGetPid(element, &processIdentifier) != kAXErrorSuccess) {
+        return NO;
+    }
+    NSRunningApplication *application =
+        [NSRunningApplication runningApplicationWithProcessIdentifier:processIdentifier];
+    return application != nil && [self applicationDeclaresTerminalSupport:application];
+}
+
+- (BOOL)applicationDeclaresTerminalSupport:(NSRunningApplication *)application {
+
+    NSString *cacheKey = application.bundleIdentifier;
+    if (cacheKey.length == 0) {
+        cacheKey = application.bundleURL.path;
+    }
+    NSNumber *cached = cacheKey.length > 0 ? self.terminalCapabilityCache[cacheKey] : nil;
+    if (cached != nil) {
+        return cached.boolValue;
+    }
+
+    BOOL declaresTerminalSupport =
+        [CIApplicationCapabilities applicationDeclaresTerminalSupport:application];
+    if (cacheKey.length > 0) {
+        self.terminalCapabilityCache[cacheKey] = @(declaresTerminalSupport);
+    }
+    return declaresTerminalSupport;
+}
+
+- (AXUIElementRef)copyOpaqueTerminalElementForApplication:(NSRunningApplication *)application {
+    if (application == nil || ![self applicationDeclaresTerminalSupport:application]) {
+        return NULL;
+    }
+
+    AXUIElementRef applicationElement = AXUIElementCreateApplication(application.processIdentifier);
+    AXUIElementSetMessagingTimeout(applicationElement, 0.25);
+    id windowObject = CIAXAttribute(applicationElement, kAXFocusedWindowAttribute);
+    if (windowObject != nil &&
+        CFGetTypeID((__bridge CFTypeRef)windowObject) == AXUIElementGetTypeID()) {
+        AXUIElementRef window = (__bridge AXUIElementRef)windowObject;
+        NSString *windowRole = CIAXStringAttribute(window, kAXRoleAttribute);
+        if ([CIApplicationCapabilities isOpaqueAccessibilityRole:windowRole]) {
+            CFRetain(window);
+            CFRelease(applicationElement);
+            return window;
+        }
+    }
+
+    NSString *applicationRole = CIAXStringAttribute(applicationElement, kAXRoleAttribute);
+    if ([CIApplicationCapabilities isOpaqueAccessibilityRole:applicationRole]) {
+        return applicationElement;
+    }
+    CFRelease(applicationElement);
+    return NULL;
 }
 
 - (NSArray<NSString *> *)textValuesFromElement:(AXUIElementRef)element {

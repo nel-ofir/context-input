@@ -15,10 +15,12 @@ clang \
     -Wall -Wextra -Wpedantic -Werror \
     -I "$PROJECT_DIR/Sources/ContextInput" \
     "$PROJECT_DIR/Tests/ClassifierTests.m" \
+    "$PROJECT_DIR/Sources/ContextInput/CIApplicationCapabilities.m" \
     "$PROJECT_DIR/Sources/ContextInput/CIContextTextSanitizer.m" \
     "$PROJECT_DIR/Sources/ContextInput/CIModels.m" \
     "$PROJECT_DIR/Sources/ContextInput/CIDraftSanitizer.m" \
     "$PROJECT_DIR/Sources/ContextInput/CILanguageClassifier.m" \
+    -framework AppKit \
     -framework Foundation \
     -framework NaturalLanguage \
     -o "$BUILD_DIR/ClassifierTests"
@@ -33,8 +35,10 @@ clang \
     -Wall -Wextra -Wpedantic -Werror \
     -I "$PROJECT_DIR/Sources/ContextInput" \
     "$PROJECT_DIR/Tests/SystemSmokeTests.m" \
+    "$PROJECT_DIR/Sources/ContextInput/CIApplicationCapabilities.m" \
     "$PROJECT_DIR/Sources/ContextInput/CIModels.m" \
     "$PROJECT_DIR/Sources/ContextInput/CIInputSourceManager.m" \
+    -framework AppKit \
     -framework Foundation \
     -framework Carbon \
     -o "$BUILD_DIR/SystemSmokeTests"

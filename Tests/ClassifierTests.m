@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import "CIApplicationCapabilities.h"
 #import "CIContextTextSanitizer.h"
 #import "CIDraftSanitizer.h"
 #import "CILanguageClassifier.h"
@@ -15,6 +16,52 @@ static void CIExpect(BOOL condition, NSString *message) {
 int main(void) {
     @autoreleasepool {
         CILanguageClassifier *classifier = [[CILanguageClassifier alloc] init];
+
+        NSDictionary *shellRoleApplication = @{
+            @"CFBundleDocumentTypes": @[
+                @{
+                    @"CFBundleTypeName": @"Terminal shell script",
+                    @"CFBundleTypeRole": @"Shell",
+                    @"LSItemContentTypes": @[@"com.apple.terminal.shell-script"],
+                },
+            ],
+        };
+        CIExpect([CIApplicationCapabilities
+                     infoDictionaryDeclaresTerminalSupport:shellRoleApplication],
+                 @"declared shell document role identifies a terminal-capable app");
+
+        NSDictionary *terminalUTIApplication = @{
+            @"CFBundleDocumentTypes": @[
+                @{
+                    @"CFBundleTypeRole": @"Viewer",
+                    @"LSItemContentTypes": @[@"com.apple.terminal.shell-script"],
+                },
+            ],
+        };
+        CIExpect([CIApplicationCapabilities
+                     infoDictionaryDeclaresTerminalSupport:terminalUTIApplication],
+                 @"terminal shell-script UTI identifies a terminal-capable app");
+
+        NSDictionary *ordinaryDeveloperTool = @{
+            @"LSApplicationCategoryType": @"public.app-category.developer-tools",
+            @"CFBundleDocumentTypes": @[
+                @{
+                    @"CFBundleTypeRole": @"Editor",
+                    @"LSItemContentTypes": @[@"public.source-code"],
+                },
+            ],
+        };
+        CIExpect(![CIApplicationCapabilities
+                      infoDictionaryDeclaresTerminalSupport:ordinaryDeveloperTool],
+                 @"developer-tool category alone does not imply a terminal");
+        CIExpect([CIApplicationCapabilities isOpaqueAccessibilityRole:@"AXWindow"],
+                 @"an opaque window can represent a custom terminal surface");
+        CIExpect([CIApplicationCapabilities isOpaqueAccessibilityRole:@"AXUnknown"],
+                 @"an unknown role can represent a custom terminal surface");
+        CIExpect(![CIApplicationCapabilities isOpaqueAccessibilityRole:@"AXButton"],
+                 @"normal controls are not treated as opaque terminal surfaces");
+        CIExpect(![CIApplicationCapabilities isOpaqueAccessibilityRole:@"AXTextField"],
+                 @"native text fields stay on the normal classification path");
 
         NSString *whatsAppMessage = [CIContextTextSanitizer
             textFromAccessibilityText:@"message, לא איפה אתם?, 23Augustat11:49, Received from אמא עבודה"

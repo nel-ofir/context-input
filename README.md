@@ -31,18 +31,18 @@ When focus moves to a normal editable text field, ContextInput:
 
 If an app does not expose readable Accessibility text, or the evidence is only emoji/punctuation, ContextInput does nothing. This fail-safe avoids disruptive guesses.
 
-Interactive terminals are detected through their accessibility role, editable value, and xterm/terminal metadata. Terminal content is classified when exposed; otherwise a focused terminal safely defaults to English.
+Interactive terminals are detected through their accessibility role, editable value, xterm/terminal metadata, and declared shell-document capabilities. For GPU-rendered terminal apps that expose only an opaque window—or leave another app's focused element registered—ContextInput uses the frontmost terminal-capable application as a bounded fallback. Terminal content is classified when exposed; otherwise a focused terminal safely defaults to English.
 
 ## Requirements
 
-- macOS 13 Ventura or newer
+- An Apple silicon Mac running macOS 13 Ventura or newer
 - A Hebrew and an English input source added in System Settings
 - Accessibility permission for ContextInput
 - Apple Command Line Tools or Xcode to build
 
 ## Build and install
 
-Build a universal Apple Silicon + Intel app from Terminal:
+Build the Apple silicon app from Terminal:
 
 ```sh
 ./scripts/build-app.sh
@@ -95,6 +95,7 @@ Classifier tests cover Hebrew, English, mixed URL content, draft precedence, con
 ## Project layout
 
 - `CIAccessibilityContextReader.m` — focused field detection and nearby visible text ranking
+- `CIApplicationCapabilities.m` — generic application capability detection for opaque terminal surfaces
 - `CILanguageClassifier.m` — script classifier plus Apple's local Natural Language model
 - `CIInputSourceManager.m` — keyboard discovery and switching
 - `CIAppController.m` — focus debounce, settings, startup, diagnostics, and orchestration
