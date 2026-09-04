@@ -3,6 +3,7 @@
 #import "CIContextTextSanitizer.h"
 #import "CIDraftSanitizer.h"
 #import "CILanguageClassifier.h"
+#import "CISwitchVerificationPolicy.h"
 
 static NSInteger failures = 0;
 
@@ -16,6 +17,35 @@ static void CIExpect(BOOL condition, NSString *message) {
 int main(void) {
     @autoreleasepool {
         CILanguageClassifier *classifier = [[CILanguageClassifier alloc] init];
+
+        // Exhaust all policy combinations, including cancellation before either check.
+        for (NSUInteger bits = 0; bits < 32; bits++) {
+            BOOL matches = (bits & 1) != 0;
+            BOOL opaque = (bits & 2) != 0;
+            BOOL final = (bits & 4) != 0;
+            BOOL focused = (bits & 8) != 0;
+            BOOL interacted = (bits & 16) != 0;
+            CISwitchVerificationAction expected;
+            if (!focused || interacted) expected = CISwitchVerificationCancel;
+            else if (final) expected = matches ? CISwitchVerificationVerified : CISwitchVerificationFailed;
+            else if (opaque || !matches) expected = CISwitchVerificationRetry;
+            else expected = CISwitchVerificationWait;
+            CIExpect([CISwitchVerificationPolicy actionWithTargetMatches:matches
+                requiresReassertion:opaque finalCheck:final focusIsCurrent:focused
+                userInteracted:interacted] == expected,
+                [NSString stringWithFormat:@"switch verification policy combination %lu", (unsigned long)bits]);
+        }
+
+        for (NSString *role in @[@"AXWindow", @"AXApplication", @"AXTextField", @"AXTextArea"]) {
+            for (NSString *value in @[@"Command Input.", @"קלט פקודה"]) {
+                NSString *draft = [CIDraftSanitizer draftFromAccessibilityValue:value
+                    placeholderValue:nil numberOfCharacters:nil applicationName:@"Any App"
+                    elementRole:role];
+                BOOL editable = [role isEqualToString:@"AXTextField"] || [role isEqualToString:@"AXTextArea"];
+                CIExpect(editable ? [draft isEqualToString:value] : draft == nil,
+                    @"window/application announcements are not drafts; real editable values are preserved");
+            }
+        }
 
         NSDictionary *shellRoleApplication = @{
             @"CFBundleDocumentTypes": @[

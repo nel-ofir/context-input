@@ -2,12 +2,19 @@
 #import "CIAccessibilityContextReader.h"
 #import "CIInputSourceManager.h"
 #import "CILanguageClassifier.h"
+#import "CISwitchVerificationPolicy.h"
 #import <ServiceManagement/ServiceManagement.h>
 #import <math.h>
 
 static NSString *const CIEnabledDefaultsKey = @"enabled";
 static NSString *const CIEnglishSourceDefaultsKey = @"englishSourceID";
 static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
+
+@interface CISettingsContentView : NSView
+@end
+@implementation CISettingsContentView
+- (BOOL)isFlipped { return YES; }
+@end
 
 @interface CIAppController ()
 @property(nonatomic) BOOL enabled;
@@ -23,6 +30,7 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
 @property(nonatomic, copy) NSString *lastReason;
 @property(nonatomic, copy) NSString *lastContextSamples;
 @property(nonatomic, copy) NSString *activeInputSourceName;
+@property(nonatomic, copy) NSString *lastSwitchSummary;
 @property(nonatomic) double lastConfidence;
 @property(nonatomic) NSUInteger lastContextItemCount;
 
@@ -31,6 +39,9 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
 @property(nonatomic) NSInteger permissionCheckCounter;
 @property(nonatomic, strong) NSTimer *pollTimer;
 @property(nonatomic, strong) id globalMouseMonitor;
+@property(nonatomic, strong) id globalKeyMonitor;
+@property(nonatomic) NSInteger inputInteractionGeneration;
+@property(nonatomic) NSInteger switchSequence;
 @property(nonatomic, strong) CIInputSourceManager *inputSourceManager;
 @property(nonatomic, strong) CIAccessibilityContextReader *contextReader;
 @property(nonatomic, strong) CILanguageClassifier *classifier;
@@ -51,6 +62,7 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
 @property(nonatomic, strong) NSTextField *reasonLabel;
 @property(nonatomic, strong) NSTextField *samplesLabel;
 @property(nonatomic, strong) NSTextField *contextLabel;
+@property(nonatomic, strong) NSTextField *switchLabel;
 @end
 
 @implementation CIAppController
@@ -78,15 +90,20 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
         _lastReason = @"—";
         _lastContextSamples = @"—";
         _activeInputSourceName = @"Unknown";
+        _lastSwitchSummary = @"No switch evaluated yet";
         [self refreshInputSources];
     }
     return self;
 }
 
 - (void)dealloc {
+    [NSWorkspace.sharedWorkspace.notificationCenter removeObserver:self];
     [_pollTimer invalidate];
     if (_globalMouseMonitor != nil) {
         [NSEvent removeMonitor:_globalMouseMonitor];
+    }
+    if (_globalKeyMonitor != nil) {
+        [NSEvent removeMonitor:_globalKeyMonitor];
     }
     if (_lastFocusedElement != NULL) {
         CFRelease(_lastFocusedElement);
@@ -102,6 +119,10 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
     [self updateMonitorStatus];
     [self startPolling];
     [self startMouseMonitoring];
+    [self startInputMonitoring];
+    [NSWorkspace.sharedWorkspace.notificationCenter
+        addObserver:self selector:@selector(frontmostApplicationChanged:)
+        name:NSWorkspaceDidActivateApplicationNotification object:nil];
 
     if (!self.accessibilityGranted) {
         [self showSettings:nil];
@@ -109,11 +130,16 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
+    [NSWorkspace.sharedWorkspace.notificationCenter removeObserver:self];
     [self.pollTimer invalidate];
     self.pollTimer = nil;
     if (self.globalMouseMonitor != nil) {
         [NSEvent removeMonitor:self.globalMouseMonitor];
         self.globalMouseMonitor = nil;
+    }
+    if (self.globalKeyMonitor != nil) {
+        [NSEvent removeMonitor:self.globalKeyMonitor];
+        self.globalKeyMonitor = nil;
     }
 }
 
@@ -122,6 +148,28 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
 }
 
 #pragma mark - Focus monitoring
+
+- (void)frontmostApplicationChanged:(NSNotification *)notification {
+    (void)notification;
+    // Window-level AX identities may survive leaving and returning to an app.
+    [self clearLastFocus];
+    [self pollFocusedElement:nil];
+}
+
+- (void)startInputMonitoring {
+    if (!self.accessibilityGranted || self.globalKeyMonitor != nil) {
+        return;
+    }
+    CIAppController *__weak weakSelf = self;
+    self.globalKeyMonitor = [NSEvent
+        addGlobalMonitorForEventsMatchingMask:NSEventMaskKeyDown | NSEventMaskFlagsChanged
+        handler:^(NSEvent *event) {
+            // Never inspect or store key characters/codes. Any keyboard activity,
+            // including modifiers used for manual language switching, cancels retries.
+            (void)event;
+            weakSelf.inputInteractionGeneration += 1;
+        }];
+}
 
 - (void)startMouseMonitoring {
     if (self.globalMouseMonitor != nil) {
@@ -166,6 +214,7 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
             self.accessibilityGranted = trusted;
             if (trusted) {
                 [self clearLastFocus];
+                [self startInputMonitoring];
             }
             [self updateMonitorStatus];
         }
@@ -220,6 +269,7 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
     if (context == nil || [context.bundleIdentifier isEqualToString:NSBundle.mainBundle.bundleIdentifier]) {
         return;
     }
+    self.switchSequence += 1;
 
     CILanguageDecision *decision = [self.classifier classifyDraft:context.draft
                                                       nearbyTexts:context.nearbyTexts];
@@ -243,6 +293,7 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
     self.lastContext = evidence != nil ? evidence : @"No usable nearby text found";
 
     if (decision == nil) {
+        self.lastSwitchSummary = @"No keyboard switch requested: insufficient context";
         self.lastDecision = @"No change";
         self.lastReason = @"No confident Hebrew or English context";
         self.lastConfidence = 0;
@@ -257,16 +308,25 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
         ? self.hebrewSourceIdentifier
         : self.englishSourceIdentifier;
     if (sourceIdentifier.length == 0) {
+        self.lastSwitchSummary = @"No keyboard switch requested: target source is missing";
         self.statusMessage = [NSString stringWithFormat:@"Add a %@ input source in System Settings",
                               CIInputLanguageDisplayName(decision.language)];
         [self updateInterface];
         return;
     }
 
-    if ([[self.inputSourceManager currentSource].identifier isEqualToString:sourceIdentifier]) {
+    CIKeyboardInputSource *before = [self.inputSourceManager currentSource];
+    NSString *timestamp = [NSDateFormatter localizedStringFromDate:NSDate.date
+        dateStyle:NSDateFormatterNoStyle timeStyle:NSDateFormatterMediumStyle];
+    self.lastSwitchSummary = [NSString stringWithFormat:@"%@ • Before: %@ → target: %@",
+        timestamp, before.name != nil ? before.name : @"Unknown", sourceIdentifier];
+    if ([before.identifier isEqualToString:sourceIdentifier]) {
         self.statusMessage = @"Watching focused text fields";
         NSString *currentName = [self.inputSourceManager currentSource].name;
         self.activeInputSourceName = currentName != nil ? currentName : @"Unknown";
+        self.lastSwitchSummary = [self.lastSwitchSummary stringByAppendingString:@" • Already reported selected"];
+        [self verifySourceIdentifier:sourceIdentifier focused:focused
+                   requiresReassertion:context.opaqueTerminal];
         [self updateInterface];
         return;
     }
@@ -276,14 +336,87 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
         self.statusMessage = error.localizedDescription != nil
             ? error.localizedDescription
             : @"Could not change the input source";
+        self.lastSwitchSummary = [self.lastSwitchSummary stringByAppendingFormat:
+            @" • Selection failed: %@", self.statusMessage];
     } else {
         self.statusMessage = @"Watching focused text fields";
         NSString *currentName = [self.inputSourceManager currentSource].name;
         self.activeInputSourceName = currentName != nil
             ? currentName
             : CIInputLanguageDisplayName(decision.language);
+        self.lastSwitchSummary = [self.lastSwitchSummary stringByAppendingFormat:
+            @" • Request accepted; immediate: %@", self.activeInputSourceName];
     }
+    [self verifySourceIdentifier:sourceIdentifier focused:focused
+               requiresReassertion:context.opaqueTerminal];
     [self updateInterface];
+}
+
+- (void)verifySourceIdentifier:(NSString *)identifier
+                      focused:(AXUIElementRef)focused
+          requiresReassertion:(BOOL)requiresReassertion {
+    NSInteger generation = self.focusGeneration;
+    NSInteger sequence = self.switchSequence;
+    NSInteger inputGeneration = self.inputInteractionGeneration;
+    pid_t pid = 0;
+    AXUIElementGetPid(focused, &pid);
+    __block BOOL stopped = NO;
+    __block NSString *history = self.lastSwitchSummary;
+    for (NSNumber *delay in @[@0.25, @0.65]) {
+        BOOL finalCheck = delay.doubleValue > 0.5;
+        CFRetain(focused);
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            if (stopped || sequence != self.switchSequence) {
+                CFRelease(focused);
+                return;
+            }
+            BOOL sameFocus = self.enabled && self.accessibilityGranted &&
+                generation == self.focusGeneration &&
+                NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier == pid;
+            if (sameFocus) {
+                AXUIElementRef currentFocus = [self.contextReader copyFocusedEditableElement];
+                sameFocus = currentFocus != NULL && CFEqual(currentFocus, focused);
+                if (currentFocus != NULL) CFRelease(currentFocus);
+            }
+            CIKeyboardInputSource *observed = [self.inputSourceManager currentSource];
+            // If the cancellation monitor could not be installed, do not risk
+            // reasserting a keyboard after the user starts typing.
+            BOOL interacted = inputGeneration != self.inputInteractionGeneration ||
+                self.globalKeyMonitor == nil;
+            CISwitchVerificationAction action = [CISwitchVerificationPolicy
+                actionWithTargetMatches:[observed.identifier isEqualToString:identifier]
+                requiresReassertion:requiresReassertion finalCheck:finalCheck
+                focusIsCurrent:sameFocus userInteracted:interacted];
+            if (action == CISwitchVerificationCancel) {
+                history = [history stringByAppendingFormat:@" • Verification stopped (%@)",
+                    !sameFocus ? @"focus changed" : @"keyboard activity or unavailable activity monitor"];
+                stopped = YES;
+            } else {
+                history = [history stringByAppendingFormat:@" • +%ld ms: %@",
+                    (long)lround(delay.doubleValue * 1000), observed.name != nil ? observed.name : @"Unknown"];
+                self.activeInputSourceName = observed.name != nil ? observed.name : @"Unknown";
+                if (action == CISwitchVerificationRetry) {
+                    NSError *error = nil;
+                    BOOL accepted = [self.inputSourceManager selectSourceIdentifier:identifier error:&error];
+                    history = [history stringByAppendingFormat:@"; one reapply %@",
+                        accepted ? @"accepted" : (error.localizedDescription != nil ? error.localizedDescription : @"failed")];
+                } else if (action == CISwitchVerificationVerified) {
+                    history = [history stringByAppendingString:@" • Source verified while target focused"];
+                    self.statusMessage = @"Watching focused text fields";
+                    stopped = YES;
+                } else if (action == CISwitchVerificationFailed) {
+                    history = [history stringByAppendingString:@" • Target source did not remain selected"];
+                    self.statusMessage = @"Keyboard switch did not hold — see Last switch";
+                    stopped = YES;
+                }
+            }
+            // Opening Settings refreshes the live source but never overwrites this history.
+            self.lastSwitchSummary = history;
+            [self updateInterface];
+            CFRelease(focused);
+        });
+    }
 }
 
 - (void)clearLastFocus {
@@ -409,12 +542,14 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
     NSString *identifier = sender.selectedItem.representedObject;
     self.englishSourceIdentifier = identifier != nil ? identifier : @"";
     [self persistSourceSelections];
+    [self clearLastFocus];
 }
 
 - (void)hebrewPopupChanged:(NSPopUpButton *)sender {
     NSString *identifier = sender.selectedItem.representedObject;
     self.hebrewSourceIdentifier = identifier != nil ? identifier : @"";
     [self persistSourceSelections];
+    [self clearLastFocus];
 }
 
 - (void)launchAtLoginChanged:(NSButton *)sender {
@@ -423,6 +558,7 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
 
 - (void)requestAccessibility:(id)sender {
     self.accessibilityGranted = [CIAccessibilityContextReader requestTrustPrompt];
+    [self startInputMonitoring];
     [self updateMonitorStatus];
     if (!self.accessibilityGranted) {
         [CIAccessibilityContextReader openAccessibilitySettings];
@@ -550,23 +686,39 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
 - (void)buildSettingsWindow {
     NSWindow *window = [[NSWindow alloc]
         initWithContentRect:NSMakeRect(0, 0, 590, 670)
-                  styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable
+                  styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable
                     backing:NSBackingStoreBuffered
                       defer:NO];
     window.title = @"ContextInput Settings";
     window.releasedWhenClosed = NO;
+    window.contentMinSize = NSMakeSize(590, 450);
     self.settingsWindow = window;
+
+    NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:window.contentView.bounds];
+    scroll.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    scroll.hasVerticalScroller = YES;
+    scroll.drawsBackground = NO;
+    [window.contentView addSubview:scroll];
+    CISettingsContentView *document = [[CISettingsContentView alloc] initWithFrame:NSZeroRect];
+    document.translatesAutoresizingMaskIntoConstraints = NO;
+    scroll.documentView = document;
+    [NSLayoutConstraint activateConstraints:@[
+        [document.leadingAnchor constraintEqualToAnchor:scroll.contentView.leadingAnchor],
+        [document.topAnchor constraintEqualToAnchor:scroll.contentView.topAnchor],
+        [document.widthAnchor constraintEqualToAnchor:scroll.contentView.widthAnchor],
+    ]];
 
     NSStackView *stack = [NSStackView stackViewWithViews:@[]];
     stack.orientation = NSUserInterfaceLayoutOrientationVertical;
     stack.alignment = NSLayoutAttributeLeading;
     stack.spacing = 13;
     stack.translatesAutoresizingMaskIntoConstraints = NO;
-    [window.contentView addSubview:stack];
+    [document addSubview:stack];
     [NSLayoutConstraint activateConstraints:@[
-        [stack.leadingAnchor constraintEqualToAnchor:window.contentView.leadingAnchor constant:24],
-        [stack.trailingAnchor constraintEqualToAnchor:window.contentView.trailingAnchor constant:-24],
-        [stack.topAnchor constraintEqualToAnchor:window.contentView.topAnchor constant:22],
+        [stack.leadingAnchor constraintEqualToAnchor:document.leadingAnchor constant:24],
+        [stack.trailingAnchor constraintEqualToAnchor:document.trailingAnchor constant:-24],
+        [stack.topAnchor constraintEqualToAnchor:document.topAnchor constant:22],
+        [stack.bottomAnchor constraintEqualToAnchor:document.bottomAnchor constant:-22],
     ]];
 
     NSTextField *title = [self label:@"ContextInput" font:[NSFont systemFontOfSize:22 weight:NSFontWeightSemibold]];
@@ -649,12 +801,15 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
     self.contextLabel = [self wrappingLabel:@""];
     self.contextLabel.selectable = YES;
     self.contextLabel.maximumNumberOfLines = 4;
+    self.switchLabel = [self wrappingLabel:@""];
+    self.switchLabel.selectable = YES;
     [stack addArrangedSubview:self.applicationLabel];
     [stack addArrangedSubview:self.focusLabel];
     [stack addArrangedSubview:self.decisionLabel];
     [stack addArrangedSubview:self.reasonLabel];
     [stack addArrangedSubview:self.samplesLabel];
     [stack addArrangedSubview:self.contextLabel];
+    [stack addArrangedSubview:self.switchLabel];
 
     NSTextField *privacy = [self wrappingLabel:@"All context is processed locally with Apple’s Natural Language framework. ContextInput never uses the network and always ignores secure text fields."];
     privacy.textColor = NSColor.tertiaryLabelColor;
@@ -706,7 +861,7 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
     self.launchAtLoginCheckbox.state = SMAppService.mainAppService.status == SMAppServiceStatusEnabled
         ? NSControlStateValueOn
         : NSControlStateValueOff;
-    self.activeSourceLabel.stringValue = [NSString stringWithFormat:@"Active input source: %@", self.activeInputSourceName];
+    self.activeSourceLabel.stringValue = [NSString stringWithFormat:@"Current input source (live): %@", self.activeInputSourceName];
     self.applicationLabel.stringValue = [NSString stringWithFormat:@"Application: %@", self.lastApplication];
     self.focusLabel.stringValue = [NSString stringWithFormat:@"Focused element: %@", self.lastFocusDescription];
     self.decisionLabel.stringValue = self.lastConfidence > 0
@@ -718,6 +873,7 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
                          (unsigned long)self.lastContextItemCount];
     self.samplesLabel.stringValue = [NSString stringWithFormat:@"Nearest context: %@", self.lastContextSamples];
     self.contextLabel.stringValue = [NSString stringWithFormat:@"Evidence: %@", self.lastContext];
+    self.switchLabel.stringValue = [NSString stringWithFormat:@"Last switch: %@", self.lastSwitchSummary];
 }
 
 @end

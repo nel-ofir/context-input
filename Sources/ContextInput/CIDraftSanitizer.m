@@ -6,6 +6,23 @@
                           placeholderValue:(NSString *)placeholder
                         numberOfCharacters:(NSNumber *)numberOfCharacters
                            applicationName:(NSString *)applicationName {
+    return [self draftFromAccessibilityValue:value
+                           placeholderValue:placeholder
+                         numberOfCharacters:numberOfCharacters
+                            applicationName:applicationName
+                                elementRole:nil];
+}
+
++ (NSString *)draftFromAccessibilityValue:(NSString *)value
+                          placeholderValue:(NSString *)placeholder
+                        numberOfCharacters:(NSNumber *)numberOfCharacters
+                           applicationName:(NSString *)applicationName
+                               elementRole:(NSString *)elementRole {
+    // Window/application AXValue may be an announcement such as "Command Input."
+    // It is not editable content, irrespective of the app or announcement language.
+    if ([elementRole isEqualToString:@"AXWindow"] || [elementRole isEqualToString:@"AXApplication"]) {
+        return nil;
+    }
     if (value.length == 0) {
         return nil;
     }

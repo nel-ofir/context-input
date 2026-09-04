@@ -28,10 +28,19 @@ When focus moves to a normal editable text field, ContextInput:
 4. Ranks text immediately above and horizontally near the focused field.
 5. Combines the recent messages, prioritizing substantive text and discounting short controls, URLs, filenames, and code-like content.
 6. Selects the configured Hebrew or English keyboard only when the decision is confident.
+7. Checks the reported source after 250 ms and 650 ms. It makes at most one delayed
+   retry if the source differs, or one reapply for an opaque terminal. Keyboard
+   activity or a focus change cancels that retry. Settings preserves this history
+   separately from its current-source display; real typing is the acceptance test.
 
 If an app does not expose readable Accessibility text, or the evidence is only emoji/punctuation, ContextInput does nothing. This fail-safe avoids disruptive guesses.
 
 Interactive terminals are detected through their accessibility role, editable value, xterm/terminal metadata, and declared shell-document capabilities. For GPU-rendered terminal apps that expose only an opaque window—or leave another app's focused element registered—ContextInput uses the frontmost terminal-capable application as a bounded fallback. Terminal content is classified when exposed; otherwise a focused terminal safely defaults to English.
+
+Window/application announcements are not drafts. App activation also triggers a
+new focus evaluation, even if an opaque window has the same Accessibility identity.
+To cancel delayed retries, a local event monitor observes only that keyboard or
+modifier activity occurred; it never reads or stores key characters or key codes.
 
 ## Requirements
 
@@ -91,6 +100,12 @@ continues watching from the menu bar.
 ```
 
 Classifier tests cover Hebrew, English, mixed URL content, draft precedence, conversation aggregation around misleading UI text, and ambiguous emoji-only content. A read-only system smoke test also verifies keyboard discovery and the active input source.
+
+The suite also covers all 32 delayed-verification policy combinations and excludes
+window announcements from drafts. Run `zsh scripts/test-settings.sh` on macOS to
+check that long switch diagnostics fit the scrollable Settings view. This test
+does not start focus monitoring or switch keyboards. Neither test proves Warp's
+actual typing layout; follow [the manual checklist](docs/TESTING.md).
 
 ## Project layout
 

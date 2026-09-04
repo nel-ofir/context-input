@@ -1,9 +1,34 @@
 # ContextInput debug test checklist
 
-## Version 0.1.8 (Build 9)
+## Version 0.1.9 (Build 10)
 
-Confirm that Settings shows **Version 0.1.8 (Build 9)** beneath the ContextInput
+Confirm that Settings shows **Version 0.1.9 (Build 10)** beneath the ContextInput
 title before testing this build.
+
+### Warp acceptance test (still requires real typing)
+
+1. Select Hebrew in another app, then click Warp's command prompt.
+2. Wait one second, press the physical A/B/C keys, and do not press Return.
+3. Pass: Latin characters appear. Delete the test characters manually.
+4. Open ContextInput Settings and inspect the selectable **Last switch** text
+   (scroll down if necessary). It preserves the source observed before the request,
+   at +250 ms, and at +650 ms while Warp was focused. The opaque-terminal path
+   reapplies the target once at +250 ms even if macOS already reports it selected.
+5. If Hebrew still appears, copy Last switch and the focus/decision/evidence rows.
+   macOS reporting the target selected is not proof that Warp used it to type.
+
+The earlier Settings source row was refreshed after opening Settings and could
+not establish which layout Warp used. It is now labeled **Current input source
+(live)**; use Last switch for historical observations. `Command Input.` on an
+AXWindow must no longer be classified as an existing draft.
+
+Repeat using both a click and Command-Tab to return to Warp. Also test immediately
+typing or manually switching layouts after focusing: the delayed retry must be
+canceled upon observed keyboard/modifier activity. Leaving the app, disabling
+switching, or changing the selected target must cancel stale retries. If the
+activity monitor cannot be installed, delayed switching is disabled for safety.
+
+### Regression checklist
 
 - Press Command-W while Settings is focused. The window closes, while the אA
   menu-bar app continues running and can reopen Settings.

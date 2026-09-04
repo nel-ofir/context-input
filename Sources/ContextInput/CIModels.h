@@ -36,6 +36,7 @@ FOUNDATION_EXPORT NSString *CIInputLanguageShortName(CIInputLanguage language);
 @property(nonatomic, copy, nullable) NSString *draft;
 @property(nonatomic, copy) NSArray<NSString *> *nearbyTexts;
 @property(nonatomic) BOOL terminalLike;
+@property(nonatomic) BOOL opaqueTerminal;
 @property(nonatomic, copy) NSString *focusDescription;
 - (instancetype)initWithApplicationName:(NSString *)applicationName
                        bundleIdentifier:(nullable NSString *)bundleIdentifier

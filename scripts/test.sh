@@ -16,6 +16,7 @@ clang \
     -I "$PROJECT_DIR/Sources/ContextInput" \
     "$PROJECT_DIR/Tests/ClassifierTests.m" \
     "$PROJECT_DIR/Sources/ContextInput/CIApplicationCapabilities.m" \
+    "$PROJECT_DIR/Sources/ContextInput/CISwitchVerificationPolicy.m" \
     "$PROJECT_DIR/Sources/ContextInput/CIContextTextSanitizer.m" \
     "$PROJECT_DIR/Sources/ContextInput/CIModels.m" \
     "$PROJECT_DIR/Sources/ContextInput/CIDraftSanitizer.m" \

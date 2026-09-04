@@ -222,17 +222,21 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
         draftFromAccessibilityValue:accessibleValue
                    placeholderValue:placeholder
                  numberOfCharacters:numberOfCharacters
-                    applicationName:applicationName];
+                    applicationName:applicationName
+                        elementRole:focusRole];
     if (accessibleValue.length > 0 && draft.length == 0 && placeholder.length == 0) {
         placeholder = accessibleValue;
     }
     if (rootObject == nil || CFGetTypeID((__bridge CFTypeRef)rootObject) != AXUIElementGetTypeID()) {
-        return [[CIScreenContext alloc] initWithApplicationName:applicationName
+        CIScreenContext *context = [[CIScreenContext alloc] initWithApplicationName:applicationName
                                              bundleIdentifier:bundleIdentifier
                                                          draft:draft
                                                    nearbyTexts:@[]
                                                   terminalLike:terminalLike
                                               focusDescription:focusDescription];
+        context.opaqueTerminal = terminalLike &&
+            [CIApplicationCapabilities isOpaqueAccessibilityRole:focusRole];
+        return context;
     }
 
     AXUIElementRef windowRoot = (__bridge AXUIElementRef)rootObject;
@@ -300,12 +304,15 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
         }
     }
 
-    return [[CIScreenContext alloc] initWithApplicationName:applicationName
+    CIScreenContext *context = [[CIScreenContext alloc] initWithApplicationName:applicationName
                                          bundleIdentifier:bundleIdentifier
                                                      draft:draft
                                                nearbyTexts:nearbyTexts
                                               terminalLike:terminalLike
                                           focusDescription:focusDescription];
+    context.opaqueTerminal = terminalLike &&
+        [CIApplicationCapabilities isOpaqueAccessibilityRole:focusRole];
+    return context;
 }
 
 - (id)contextRootObjectForFocused:(AXUIElementRef)focused

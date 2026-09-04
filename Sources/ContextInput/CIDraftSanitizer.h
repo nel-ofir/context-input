@@ -6,6 +6,11 @@ NS_ASSUME_NONNULL_BEGIN
 + (nullable NSString *)draftFromAccessibilityValue:(nullable NSString *)value
                                    placeholderValue:(nullable NSString *)placeholder
                                  numberOfCharacters:(nullable NSNumber *)numberOfCharacters
+                                    applicationName:(NSString *)applicationName
+                                        elementRole:(nullable NSString *)elementRole;
++ (nullable NSString *)draftFromAccessibilityValue:(nullable NSString *)value
+                                   placeholderValue:(nullable NSString *)placeholder
+                                 numberOfCharacters:(nullable NSNumber *)numberOfCharacters
                                     applicationName:(NSString *)applicationName;
 @end
 

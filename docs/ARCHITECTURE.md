@@ -38,6 +38,22 @@ can stand in for a missing or stale focused element. This signal comes from the
 application bundle rather than its name. Native text fields and other controls
 inside the same application still use the normal classifier.
 
+## Selection verification
+
+Selection request success is distinct from text being entered in the requested
+layout. The controller records before/immediate and +250/+650 ms source snapshots.
+At +250 ms it makes at most one additional selection if the source differs, or if
+the target is an opaque terminal. There is no persistent enforcement loop. The
+pure `CISwitchVerificationPolicy` covers all combinations of match, opaque surface,
+check phase, focus validity, and keyboard activity in unit tests.
+
+Each check validates both the focus generation and decision sequence, the actual
+frontmost process and focused AX element, and absence of keyboard/modifier events.
+Those events only increment a counter; key contents are not inspected or saved.
+Missing activity monitoring cancels the delayed operation. Settings retains the
+history when refreshing its current-source label. A verified source is only a
+macOS API observation, not proof of a custom renderer's typing behavior.
+
 ## Packaging
 
 ContextInput is a single native executable inside a standard `.app` bundle. It has no network or third-party runtime dependency. The packaging script creates an ad-hoc signed local bundle by default, or a hardened Developer ID-signed bundle when `SIGNING_IDENTITY` is supplied.
