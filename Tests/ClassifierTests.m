@@ -390,6 +390,38 @@ int main(void) {
         CIExpect(metadataWeightedSlackConversation.language == CIInputLanguageHebrew,
                  @"a clear Hebrew node consensus breaks a sub-80-percent metadata tie");
 
+        CILanguageDecision *timestampedSlackWrappers = [classifier
+            classifyDraft:nil
+               nearbyTexts:@[
+                   @"Hili Seker Amiel",
+                   @"Nel Ofir: 12:04 .בכיף PM.",
+                   @"בכיף",
+                   @"Hili Seker Amiel: 12:03 .אחלה תודה PM.",
+                   @"אחלה תודה",
+                   @"Nel Ofir: 11:58 .מעולה תודה PM.",
+                   @"מעולה תודה",
+                   @"PROFESSIONAL SUMMARY Head of Data and Platform Leader specializing in building intelligent data platforms under strict constraints and leading cross-functional delivery.",
+               ]];
+        CIExpect(timestampedSlackWrappers.language == CIInputLanguageHebrew,
+                 @"repeated Hebrew message leaves outrank timestamped wrappers and an attachment");
+        CIExpect([timestampedSlackWrappers.reason isEqualToString:@"the repeated message bodies"],
+                 @"repeated message body decisions report their signal");
+
+        CILanguageDecision *timestampedEnglishWrappers = [classifier
+            classifyDraft:nil
+               nearbyTexts:@[
+                   @"דנה כהן",
+                   @"Dana Cohen: 12:04 PM. Sounds good.",
+                   @"Sounds good",
+                   @"Nel Ofir: 12:03 PM. Thank you.",
+                   @"Thank you",
+                   @"Dana Cohen: 11:58 PM. Talk soon.",
+                   @"Talk soon",
+                   @"מסמך ישן בעברית עם הרבה מלל שאינו חלק מההודעות האחרונות בשיחה",
+               ]];
+        CIExpect(timestampedEnglishWrappers.language == CIInputLanguageEnglish,
+                 @"repeated English message leaves receive the same protection");
+
         CILanguageDecision *englishNodeConsensus = [classifier
             classifyDraft:nil
                nearbyTexts:@[

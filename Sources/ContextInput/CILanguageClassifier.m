@@ -7,6 +7,7 @@
                               reason:(NSString *)reason
                           stripLinks:(BOOL)stripLinks;
 - (CILanguageDecision *)classifyConversationTexts:(NSArray<NSString *> *)nearbyTexts;
+- (CILanguageDecision *)classifyRepeatedMessageBodies:(NSArray<NSString *> *)nearbyTexts;
 - (CILanguageDecision *)classifyConversationTexts:(NSArray<NSString *> *)nearbyTexts
                                              limit:(NSUInteger)limit
                                  minimumConfidence:(double)minimumConfidence;
@@ -89,6 +90,11 @@
 }
 
 - (CILanguageDecision *)classifyConversationTexts:(NSArray<NSString *> *)nearbyTexts {
+    CILanguageDecision *messageBodyDecision = [self classifyRepeatedMessageBodies:nearbyTexts];
+    if (messageBodyDecision != nil) {
+        return messageBodyDecision;
+    }
+
     // Accessibility APIs often expose attachments, link previews, or documents as
     // very large text nodes. First ask whether the geometrically nearest context is
     // already decisive. This models how a person chooses the language from the latest
@@ -108,6 +114,80 @@
     return [self classifyConversationTexts:nearbyTexts
                                      limit:fullLimit
                          minimumConfidence:0.55];
+}
+
+- (CILanguageDecision *)classifyRepeatedMessageBodies:(NSArray<NSString *> *)nearbyTexts {
+    NSUInteger hebrewBodies = 0;
+    NSUInteger englishBodies = 0;
+    NSString *hebrewEvidence = nil;
+    NSString *englishEvidence = nil;
+    NSUInteger limit = nearbyTexts.count < 32 ? nearbyTexts.count : 32;
+
+    for (NSUInteger childIndex = 0; childIndex < limit; childIndex++) {
+        NSString *child = [self sanitizedText:nearbyTexts[childIndex] stripLinks:YES];
+        NSUInteger childHebrew = 0;
+        NSUInteger childLatin = 0;
+        [self countScriptsInText:child hebrew:&childHebrew latin:&childLatin];
+        NSUInteger childLetters = childHebrew + childLatin;
+        if (childLetters < 3 || child.length > 500) {
+            continue;
+        }
+        double childHebrewShare = (double)childHebrew / (double)childLetters;
+        double childEnglishShare = (double)childLatin / (double)childLetters;
+        if (childHebrewShare < 0.80 && childEnglishShare < 0.80) {
+            continue;
+        }
+
+        for (NSUInteger parentIndex = 0; parentIndex < limit; parentIndex++) {
+            if (parentIndex == childIndex) {
+                continue;
+            }
+            NSString *parent = [self sanitizedText:nearbyTexts[parentIndex] stripLinks:YES];
+            if (parent.length < child.length + 8 ||
+                [parent rangeOfString:@"\\b\\d{1,2}:\\d{2}\\b"
+                              options:NSRegularExpressionSearch].location == NSNotFound) {
+                continue;
+            }
+            NSRange childRange = [parent rangeOfString:child
+                                               options:NSCaseInsensitiveSearch];
+            // Timestamped wrappers begin with the author. A repeated leaf at the
+            // beginning is metadata; a later repeated leaf is the message body.
+            if (childRange.location == NSNotFound || childRange.location == 0) {
+                continue;
+            }
+            if (childHebrewShare >= 0.80) {
+                hebrewBodies += 1;
+                if (hebrewEvidence == nil) hebrewEvidence = child;
+            } else {
+                englishBodies += 1;
+                if (englishEvidence == nil) englishEvidence = child;
+            }
+            break;
+        }
+    }
+
+    NSUInteger bodyCount = hebrewBodies + englishBodies;
+    if (bodyCount < 2 || hebrewBodies == englishBodies) {
+        return nil;
+    }
+    CIInputLanguage language = hebrewBodies > englishBodies
+        ? CIInputLanguageHebrew
+        : CIInputLanguageEnglish;
+    NSUInteger winningBodies = hebrewBodies > englishBodies
+        ? hebrewBodies
+        : englishBodies;
+    double confidence = (double)winningBodies / (double)bodyCount;
+    if (confidence < 0.60) {
+        return nil;
+    }
+    NSString *evidence = language == CIInputLanguageHebrew
+        ? hebrewEvidence
+        : englishEvidence;
+    return [[CILanguageDecision alloc]
+        initWithLanguage:language
+              confidence:confidence
+                evidence:[self previewForText:evidence]
+                  reason:@"the repeated message bodies"];
 }
 
 - (CILanguageDecision *)classifyConversationTexts:(NSArray<NSString *> *)nearbyTexts
