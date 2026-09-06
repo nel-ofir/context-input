@@ -6,6 +6,41 @@
         <description>Signed beta updates for ContextInput.</description>
         <language>en</language>
         <item>
+            <title>0.2.2</title>
+            <pubDate>Sun, 06 Sep 2026 22:47:22 +0300</pubDate>
+            <sparkle:version>23</sparkle:version>
+            <sparkle:shortVersionString>0.2.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description sparkle:format="markdown"><![CDATA[# ContextInput 0.2.2 beta
+
+This release improves language selection in conversations that contain large
+attachments or document previews.
+
+- Prioritizes a confident cluster of the ten nearest text items before consulting
+  older visible context.
+- Fixes Hebrew Slack conversations being diluted by older English resumes,
+  attachments, link previews, and surrounding interface labels.
+- Keeps the wider 32-item context as a fallback when the nearest items are mixed.
+- Prevents business and messaging apps from entering the opaque-terminal fallback
+  merely because their bundle advertises a shell-file handler.
+- Rejects text that only touches the focused composer's horizontal column by a few
+  pixels, preventing adjacent Slack sidebar entries from becoming chat evidence.
+- Ignores Slack's paused-notifications status banner, including the fragments
+  Electron exposes as separate accessibility text nodes.
+- Reduces Slack's duplicated parent message labels to the message body, removing
+  English sender names and AM/PM metadata from Hebrew replies.
+- Handles both Slack's logical accessibility-string order and its visually
+  reordered RTL presentation, including invisible bidirectional markers.
+- Uses a symmetric majority of distinct, strongly single-script context items to
+  resolve sub-80-percent decisions caused by metadata-heavy accessibility labels.
+- Detects repeated message-body leaves inside timestamped accessibility wrappers,
+  excluding author-name prefixes and treating the bodies as primary evidence.
+- Adds mirrored Hebrew and English regression coverage for the new behavior.
+]]></description>
+            <enclosure url="https://github.com/nel-ofir/context-input/releases/download/v0.2.2-beta.3/ContextInput-0.2.2-arm64.zip" length="1641912" type="application/octet-stream" sparkle:edSignature="Qa+2lGwThqtABoi5Klx5KJodowdoFnb5V0yfLVjAJiwpM2m15DS3dG2qBPfJQkS3i8r1zeq1dyGlY49mg7NCDQ=="/>
+        </item>
+        <item>
             <title>0.2.1</title>
             <pubDate>Sun, 06 Sep 2026 21:03:51 +0300</pubDate>
             <sparkle:version>16</sparkle:version>
