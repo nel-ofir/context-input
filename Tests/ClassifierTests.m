@@ -19,19 +19,18 @@ int main(void) {
         CILanguageClassifier *classifier = [[CILanguageClassifier alloc] init];
 
         // Exhaust all policy combinations, including cancellation before either check.
-        for (NSUInteger bits = 0; bits < 32; bits++) {
+        for (NSUInteger bits = 0; bits < 16; bits++) {
             BOOL matches = (bits & 1) != 0;
-            BOOL opaque = (bits & 2) != 0;
-            BOOL final = (bits & 4) != 0;
-            BOOL focused = (bits & 8) != 0;
-            BOOL interacted = (bits & 16) != 0;
+            BOOL final = (bits & 2) != 0;
+            BOOL focused = (bits & 4) != 0;
+            BOOL interacted = (bits & 8) != 0;
             CISwitchVerificationAction expected;
             if (!focused || interacted) expected = CISwitchVerificationCancel;
             else if (final) expected = matches ? CISwitchVerificationVerified : CISwitchVerificationFailed;
-            else if (opaque || !matches) expected = CISwitchVerificationRetry;
+            else if (!matches) expected = CISwitchVerificationRetry;
             else expected = CISwitchVerificationWait;
             CIExpect([CISwitchVerificationPolicy actionWithTargetMatches:matches
-                requiresReassertion:opaque finalCheck:final focusIsCurrent:focused
+                finalCheck:final focusIsCurrent:focused
                 userInteracted:interacted] == expected,
                 [NSString stringWithFormat:@"switch verification policy combination %lu", (unsigned long)bits]);
         }

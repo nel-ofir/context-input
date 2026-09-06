@@ -42,10 +42,10 @@ inside the same application still use the normal classifier.
 
 Selection request success is distinct from text being entered in the requested
 layout. The controller records before/immediate and +250/+650 ms source snapshots.
-At +250 ms it makes at most one additional selection if the source differs, or if
-the target is an opaque terminal. There is no persistent enforcement loop. The
-pure `CISwitchVerificationPolicy` covers all combinations of match, opaque surface,
-check phase, focus validity, and keyboard activity in unit tests.
+At +250 ms it makes at most one additional selection if the source differs. There
+is no persistent enforcement loop. The
+pure `CISwitchVerificationPolicy` covers all combinations of match, check phase,
+focus validity, and keyboard activity in unit tests.
 
 Each check validates both the focus generation and decision sequence, the actual
 frontmost process and focused AX element, and absence of keyboard/modifier events.
@@ -54,13 +54,33 @@ Missing activity monitoring cancels the delayed operation. Settings retains the
 history when refreshing its current-source label. A verified source is only a
 macOS API observation, not proof of a custom renderer's typing behavior.
 
+Opaque terminal detection remains generic and useful for deciding that a focused
+terminal should use English. It does not imply that every custom text-input client
+will consume a background TIS selection. Warp can retain a different internal
+layout even while TIS reports the requested source. Focus-stealing helpers and
+synthetic Control-Space/Fn events were tested and removed because they did not
+reliably change that internal state. ContextInput makes no app-specific workaround.
+
 ## Packaging
 
-ContextInput is a single native executable inside a standard `.app` bundle. It has no network or third-party runtime dependency. The packaging script creates an ad-hoc signed local bundle by default, or a hardened Developer ID-signed bundle when `SIGNING_IDENTITY` is supplied.
+ContextInput is a native executable inside a standard `.app` bundle. Sparkle 2 is
+embedded as a pinned framework for automatic updates. Language context stays
+entirely on-device; Sparkle alone contacts the public GitHub appcast and release
+asset URLs.
+
+Local builds use an ad-hoc signature by default. Friend-testable beta releases use
+the long-lived `ContextInput Beta Code Signing` self-signed identity. Successive
+builds therefore have the same designated requirement (bundle identifier plus
+certificate root), which is the prerequisite for retaining the Accessibility
+approval across an in-place update. Release ZIPs are additionally signed with a
+Sparkle EdDSA key whose private half remains in the release Keychain. A future
+Developer ID build can enable hardened runtime and notarization, but moving to
+that new identity may cause one final Accessibility reapproval.
 
 ## Future hardening
 
 - Replace polling with per-process `AXObserver` focus notifications after profiling missed events across Electron and AppKit apps.
 - Add opt-in app adapters for Slack/Teams/Discord accessibility structures.
 - Add an optional OCR adapter only when runtime Vision capability checks confirm both `he-IL` and `en-US`; keep it behind a separate Screen Recording permission.
-- Add a signed Sparkle-style updater only if automatic updates become necessary; the core app should remain network-free.
+- Replace the self-signed beta certificate with Developer ID signing and
+  notarization before broad public distribution.

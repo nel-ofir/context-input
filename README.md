@@ -2,7 +2,9 @@
 
 ContextInput is a self-contained macOS menu-bar app that chooses a Hebrew or English keyboard when a text field gains focus. It reads nearby visible text through the macOS Accessibility API, makes the decision entirely on-device, and changes the selected keyboard input source through macOS Text Input Source Services.
 
-No context, screenshots, analytics, or model requests leave the Mac.
+No context, screenshots, analytics, or model requests leave the Mac. The updater
+contacts only this project's public GitHub feed to check versions and download a
+cryptographically signed release.
 
 ## Why this uses Apple Natural Language—not a generative LLM
 
@@ -29,7 +31,7 @@ When focus moves to a normal editable text field, ContextInput:
 5. Combines the recent messages, prioritizing substantive text and discounting short controls, URLs, filenames, and code-like content.
 6. Selects the configured Hebrew or English keyboard only when the decision is confident.
 7. Checks the reported source after 250 ms and 650 ms. It makes at most one delayed
-   retry if the source differs, or one reapply for an opaque terminal. Keyboard
+   retry if the source differs. Keyboard
    activity or a focus change cancels that retry. Settings preserves this history
    separately from its current-source display; real typing is the acceptance test.
 
@@ -41,6 +43,12 @@ Window/application announcements are not drafts. App activation also triggers a
 new focus evaluation, even if an opaque window has the same Accessibility identity.
 To cancel delayed retries, a local event monitor observes only that keyboard or
 modifier activity occurred; it never reads or stores key characters or key codes.
+
+Known limitation: custom remote text-input clients such as Warp can keep using a
+different layout after macOS reports that the requested source was selected.
+ContextInput records this accurately but does not synthesize shortcuts or steal
+focus to work around it; those approaches are unreliable and can cause visible UI
+side effects. Manual input-source switching continues to work normally.
 
 ## Requirements
 
@@ -63,7 +71,25 @@ The result is `dist/ContextInput.app`. For a drag-to-Applications disk image:
 ./scripts/build-dmg.sh
 ```
 
-For a private local build, the scripts apply an ad-hoc signature. For distribution, sign with Developer ID:
+For a private local build, the scripts apply an ad-hoc signature. To create the
+free, friend-testable beta build with a stable identity and automatic updates:
+
+```sh
+./scripts/setup-beta-signing.sh   # once on the release Mac
+./scripts/package-beta.sh
+```
+
+This creates both `dist/releases/ContextInput-0.2.0-arm64.dmg` for installation
+and a signed ZIP used by the automatic updater. See
+[`docs/RELEASING.md`](docs/RELEASING.md) before publishing the GitHub release.
+
+The beta certificate is self-signed, so macOS will not treat it like an Apple
+Developer ID. On first installation, a friend may need to Control-click the app,
+choose **Open**, and confirm. They grant Accessibility after the app is in
+Applications. Later Sparkle updates are installed in place with the same app
+identity, so that permission is expected to remain approved.
+
+For public distribution with a paid Apple Developer account, sign with Developer ID:
 
 ```sh
 SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./scripts/build-dmg.sh
@@ -71,7 +97,10 @@ SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./scripts/build-
 
 Then notarize and staple the disk image using your Apple Developer credentials before sharing it. A stable Developer ID signature is important because macOS ties Accessibility approval to the signed app identity.
 
-An ad-hoc local build is not notarized. On first launch, macOS may require Control-clicking the app and choosing **Open**. A Developer ID-signed and notarized release opens normally for other users.
+An ad-hoc or self-signed beta is not notarized. A Developer ID-signed and
+notarized release opens normally for other users. Switching the beta channel from
+the self-signed identity to Developer ID later will probably require testers to
+approve Accessibility one more time.
 
 ## First launch
 
@@ -86,12 +115,17 @@ The Settings window displays the exact app version and build number. Close it
 with the red window button or the standard **Command-W** shortcut; ContextInput
 continues watching from the menu bar.
 
+Automatic update checks run every six hours. **Check for Updates…** is available
+from both the menu-bar menu and Settings. Update archives must carry a valid
+Sparkle EdDSA signature, and successive apps must keep the same code-signing
+identity.
+
 ## Current scope and limitations
 
 - Slack, browsers, and Electron apps usually expose enough Accessibility text, but results depend on each app's accessibility implementation.
 - The current version does not take screenshots. An OCR fallback would require the broader Screen Recording permission, and should only be added after testing Hebrew recognition on every supported macOS release.
 - Context ranking is intentionally generic. App-specific adapters can improve precision for products whose accessibility trees are unusual.
-- The app is intentionally not sandboxed; global assistive access and input-source control are poor fits for a Mac App Store sandbox. Developer ID distribution is the practical path.
+- The app is intentionally not sandboxed; global assistive access and input-source control are poor fits for a Mac App Store sandbox. The free beta uses a stable self-signed identity; Developer ID remains the production-grade path.
 
 ## Tests
 
@@ -114,7 +148,7 @@ actual typing layout; follow [the manual checklist](docs/TESTING.md).
 - `CILanguageClassifier.m` — script classifier plus Apple's local Natural Language model
 - `CIInputSourceManager.m` — keyboard discovery and switching
 - `CIAppController.m` — focus debounce, settings, startup, diagnostics, and orchestration
-- `scripts/` — self-contained `.app` and `.dmg` packaging
+- `scripts/` — app builds, beta signing, DMG/ZIP packaging, update-feed generation, and identity verification
 
 ## Apple API references
 
@@ -123,3 +157,9 @@ actual typing layout; follow [the manual checklist](docs/TESTING.md).
 - [Foundation Models system model availability](https://developer.apple.com/documentation/foundationmodels/systemlanguagemodel)
 - [Apple Intelligence device and language requirements](https://support.apple.com/en-il/121115)
 - [macOS Accessibility elements](https://developer.apple.com/documentation/applicationservices/axuielement)
+
+## Third-party software
+
+Automatic updates use [Sparkle](https://sparkle-project.org/) 2.9.6 under its
+permissive license. The exact release archive is checksum-pinned by
+`scripts/fetch-sparkle.sh`, and its license is bundled in the app.

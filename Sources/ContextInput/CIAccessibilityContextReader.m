@@ -228,15 +228,12 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
         placeholder = accessibleValue;
     }
     if (rootObject == nil || CFGetTypeID((__bridge CFTypeRef)rootObject) != AXUIElementGetTypeID()) {
-        CIScreenContext *context = [[CIScreenContext alloc] initWithApplicationName:applicationName
+        return [[CIScreenContext alloc] initWithApplicationName:applicationName
                                              bundleIdentifier:bundleIdentifier
                                                          draft:draft
                                                    nearbyTexts:@[]
                                                   terminalLike:terminalLike
                                               focusDescription:focusDescription];
-        context.opaqueTerminal = terminalLike &&
-            [CIApplicationCapabilities isOpaqueAccessibilityRole:focusRole];
-        return context;
     }
 
     AXUIElementRef windowRoot = (__bridge AXUIElementRef)rootObject;
@@ -304,15 +301,12 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
         }
     }
 
-    CIScreenContext *context = [[CIScreenContext alloc] initWithApplicationName:applicationName
+    return [[CIScreenContext alloc] initWithApplicationName:applicationName
                                          bundleIdentifier:bundleIdentifier
                                                      draft:draft
                                                nearbyTexts:nearbyTexts
                                               terminalLike:terminalLike
                                           focusDescription:focusDescription];
-    context.opaqueTerminal = terminalLike &&
-        [CIApplicationCapabilities isOpaqueAccessibilityRole:focusRole];
-    return context;
 }
 
 - (id)contextRootObjectForFocused:(AXUIElementRef)focused

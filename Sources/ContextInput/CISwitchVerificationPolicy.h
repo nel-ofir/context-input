@@ -10,7 +10,6 @@ typedef NS_ENUM(NSInteger, CISwitchVerificationAction) {
 
 @interface CISwitchVerificationPolicy : NSObject
 + (CISwitchVerificationAction)actionWithTargetMatches:(BOOL)targetMatches
-                                requiresReassertion:(BOOL)requiresReassertion
                                          finalCheck:(BOOL)finalCheck
                                      focusIsCurrent:(BOOL)focusIsCurrent
                                      userInteracted:(BOOL)userInteracted;

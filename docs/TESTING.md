@@ -1,21 +1,18 @@
 # ContextInput debug test checklist
 
-## Version 0.1.9 (Build 10)
+## Version 0.2.0 (Build 15)
 
-Confirm that Settings shows **Version 0.1.9 (Build 10)** beneath the ContextInput
+Confirm that Settings shows **Version 0.2.0 (Build 15)** beneath the ContextInput
 title before testing this build.
 
-### Warp acceptance test (still requires real typing)
+### Warp known limitation
 
-1. Select Hebrew in another app, then click Warp's command prompt.
-2. Wait one second, press the physical A/B/C keys, and do not press Return.
-3. Pass: Latin characters appear. Delete the test characters manually.
-4. Open ContextInput Settings and inspect the selectable **Last switch** text
-   (scroll down if necessary). It preserves the source observed before the request,
-   at +250 ms, and at +650 ms while Warp was focused. The opaque-terminal path
-   reapplies the target once at +250 ms even if macOS already reports it selected.
-5. If Hebrew still appears, copy Last switch and the focus/decision/evidence rows.
-   macOS reporting the target selected is not proof that Warp used it to type.
+Warp is still detected generically as a terminal and the decision should be
+English. Its custom remote text-input client can nevertheless continue typing in
+Hebrew after macOS reports ABC. Manual Fn switching works, but synthetic
+Control-Space/Fn events and a focus-refresh panel did not reproduce that hardware
+action reliably, so all three experimental workarounds were removed. Testing Warp
+must not show a compatibility setting or any ContextInput panel flicker.
 
 The earlier Settings source row was refreshed after opening Settings and could
 not establish which layout Warp used. It is now labeled **Current input source
@@ -35,8 +32,8 @@ activity monitor cannot be installed, delayed switching is disabled for safety.
 - Focus the Codex embedded terminal while Hebrew is active. ContextInput selects
   the configured English keyboard.
 - Focus a terminal implemented with an opaque custom rendering surface, such as
-  Warp, while Hebrew is active. Settings must record that application, describe
-  the focused element as a terminal, and select the configured English keyboard.
+  Warp. Settings must record that application, describe the focused element as a
+  terminal, and decide English. The actual Warp layout is a documented limitation.
 - As negative controls, confirm Cursor's standard embedded terminal still selects
   English, and a normal search or text field inside a terminal-capable app is
   classified from its own draft/context rather than forced to English.
@@ -66,5 +63,12 @@ activity monitor cannot be installed, delayed switching is disabled for safety.
 - Focus a password or secure text field. ContextInput makes no change.
 - Focus content containing only emoji or punctuation. ContextInput makes no
   uncertain language change.
-- Confirm all decisions are local: the app requests Accessibility permission but
-  never Screen Recording or network access.
+- Confirm all language decisions are local: the app requests Accessibility but
+  never Screen Recording. Only update checks/downloads contact GitHub.
+- Open the menu-bar menu and Settings and confirm both contain **Check for
+  Updates…**. With 0.2.0 being current, the action should report that there is no
+  newer update after the beta feed is published.
+- For the first post-0.2.0 beta update, confirm Sparkle replaces the app in place
+  and System Settings still shows ContextInput enabled under Accessibility. Type
+  in one English and one Hebrew control after relaunch; the macOS checkbox alone
+  is not sufficient proof.

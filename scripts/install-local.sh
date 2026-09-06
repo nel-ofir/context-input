@@ -5,8 +5,9 @@ SCRIPT_DIR=${0:A:h}
 PROJECT_DIR=${SCRIPT_DIR:h}
 APP_DIR="$PROJECT_DIR/dist/ContextInput.app"
 DESTINATION="/Applications/ContextInput.app"
+SIGNING_IDENTITY=${SIGNING_IDENTITY:-ContextInput Beta Code Signing}
 
-"$SCRIPT_DIR/build-app.sh"
+SIGNING_IDENTITY="$SIGNING_IDENTITY" "$SCRIPT_DIR/build-app.sh"
 pkill -x ContextInput 2>/dev/null || true
 for attempt in {1..20}; do
     if ! pgrep -x ContextInput >/dev/null; then

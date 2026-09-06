@@ -4,6 +4,7 @@
 #import "CILanguageClassifier.h"
 #import "CISwitchVerificationPolicy.h"
 #import <ServiceManagement/ServiceManagement.h>
+#import <Sparkle/Sparkle.h>
 #import <math.h>
 
 static NSString *const CIEnabledDefaultsKey = @"enabled";
@@ -45,6 +46,7 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
 @property(nonatomic, strong) CIInputSourceManager *inputSourceManager;
 @property(nonatomic, strong) CIAccessibilityContextReader *contextReader;
 @property(nonatomic, strong) CILanguageClassifier *classifier;
+@property(nonatomic, strong) SPUStandardUpdaterController *updaterController;
 
 @property(nonatomic, strong) NSStatusItem *statusItem;
 @property(nonatomic, strong) NSWindow *settingsWindow;
@@ -112,6 +114,8 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+    self.updaterController = [[SPUStandardUpdaterController alloc]
+        initWithStartingUpdater:YES updaterDelegate:nil userDriverDelegate:nil];
     [self configureApplicationMenu];
     [self configureStatusItem];
 
@@ -325,8 +329,7 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
         NSString *currentName = [self.inputSourceManager currentSource].name;
         self.activeInputSourceName = currentName != nil ? currentName : @"Unknown";
         self.lastSwitchSummary = [self.lastSwitchSummary stringByAppendingString:@" • Already reported selected"];
-        [self verifySourceIdentifier:sourceIdentifier focused:focused
-                   requiresReassertion:context.opaqueTerminal];
+        [self verifySourceIdentifier:sourceIdentifier focused:focused];
         [self updateInterface];
         return;
     }
@@ -347,14 +350,12 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
         self.lastSwitchSummary = [self.lastSwitchSummary stringByAppendingFormat:
             @" • Request accepted; immediate: %@", self.activeInputSourceName];
     }
-    [self verifySourceIdentifier:sourceIdentifier focused:focused
-               requiresReassertion:context.opaqueTerminal];
+    [self verifySourceIdentifier:sourceIdentifier focused:focused];
     [self updateInterface];
 }
 
 - (void)verifySourceIdentifier:(NSString *)identifier
-                      focused:(AXUIElementRef)focused
-          requiresReassertion:(BOOL)requiresReassertion {
+                      focused:(AXUIElementRef)focused {
     NSInteger generation = self.focusGeneration;
     NSInteger sequence = self.switchSequence;
     NSInteger inputGeneration = self.inputInteractionGeneration;
@@ -386,7 +387,7 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
                 self.globalKeyMonitor == nil;
             CISwitchVerificationAction action = [CISwitchVerificationPolicy
                 actionWithTargetMatches:[observed.identifier isEqualToString:identifier]
-                requiresReassertion:requiresReassertion finalCheck:finalCheck
+                finalCheck:finalCheck
                 focusIsCurrent:sameFocus userInteracted:interacted];
             if (action == CISwitchVerificationCancel) {
                 history = [history stringByAppendingFormat:@" • Verification stopped (%@)",
@@ -402,7 +403,7 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
                     history = [history stringByAppendingFormat:@"; one reapply %@",
                         accepted ? @"accepted" : (error.localizedDescription != nil ? error.localizedDescription : @"failed")];
                 } else if (action == CISwitchVerificationVerified) {
-                    history = [history stringByAppendingString:@" • Source verified while target focused"];
+                    history = [history stringByAppendingString:@" • macOS reports target source; typing not verified"];
                     self.statusMessage = @"Watching focused text fields";
                     stopped = YES;
                 } else if (action == CISwitchVerificationFailed) {
@@ -569,6 +570,10 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
     [NSApp terminate:nil];
 }
 
+- (void)checkForUpdates:(id)sender {
+    [self.updaterController checkForUpdates:sender];
+}
+
 - (void)closeSettings:(id)sender {
     [self.settingsWindow performClose:sender];
 }
@@ -590,6 +595,11 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
                                                keyEquivalent:@","];
     settings.target = self;
     [applicationMenu addItem:settings];
+    NSMenuItem *updates = [[NSMenuItem alloc] initWithTitle:@"Check for Updates…"
+                                                     action:@selector(checkForUpdates:)
+                                              keyEquivalent:@""];
+    updates.target = self;
+    [applicationMenu addItem:updates];
     [applicationMenu addItem:NSMenuItem.separatorItem];
     NSMenuItem *quit = [[NSMenuItem alloc] initWithTitle:@"Quit ContextInput"
                                                   action:@selector(quitApplication:)
@@ -653,6 +663,12 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
                                                keyEquivalent:@","];
     settings.target = self;
     [menu addItem:settings];
+
+    NSMenuItem *updates = [[NSMenuItem alloc] initWithTitle:@"Check for Updates…"
+                                                     action:@selector(checkForUpdates:)
+                                              keyEquivalent:@""];
+    updates.target = self;
+    [menu addItem:updates];
 
     if (!self.accessibilityGranted) {
         NSMenuItem *permission = [[NSMenuItem alloc] initWithTitle:@"Grant Accessibility Access…"
@@ -790,6 +806,15 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
                                                        action:@selector(launchAtLoginChanged:)];
     [stack addArrangedSubview:self.launchAtLoginCheckbox];
 
+    [stack addArrangedSubview:[self sectionHeading:@"UPDATES"]];
+    NSTextField *updatesDescription = [self wrappingLabel:@"Updates are checked automatically and installed when ContextInput is idle. Context text is never included in update requests."];
+    updatesDescription.textColor = NSColor.secondaryLabelColor;
+    [stack addArrangedSubview:updatesDescription];
+    NSButton *updatesButton = [NSButton buttonWithTitle:@"Check for Updates…"
+                                                 target:self
+                                                 action:@selector(checkForUpdates:)];
+    [stack addArrangedSubview:updatesButton];
+
     [stack addArrangedSubview:[self sectionHeading:@"LAST FOCUS EVENT"]];
     self.applicationLabel = [self wrappingLabel:@""];
     self.focusLabel = [self wrappingLabel:@""];
@@ -811,7 +836,7 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
     [stack addArrangedSubview:self.contextLabel];
     [stack addArrangedSubview:self.switchLabel];
 
-    NSTextField *privacy = [self wrappingLabel:@"All context is processed locally with Apple’s Natural Language framework. ContextInput never uses the network and always ignores secure text fields."];
+    NSTextField *privacy = [self wrappingLabel:@"All language context is processed locally with Apple’s Natural Language framework and secure text fields are always ignored. The only network access is a version check and signed update download from this project’s GitHub release feed."];
     privacy.textColor = NSColor.tertiaryLabelColor;
     privacy.font = [NSFont systemFontOfSize:11];
     [stack addArrangedSubview:privacy];

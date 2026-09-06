@@ -12,7 +12,7 @@ int main(void) {
         [NSApplication sharedApplication];
         CIAppController *controller = [[CIAppController alloc] init];
         [controller buildSettingsWindow];
-        [controller setValue:[@"Before: Hebrew → target: ABC • +250 ms: ABC; one reapply accepted • +650 ms: ABC • "
+        [controller setValue:[@"Before: Hebrew → target: ABC • +250 ms: ABC • +650 ms: ABC • "
             stringByPaddingToLength:700 withString:@"Diagnostic text. " startingAtIndex:0]
             forKey:@"lastSwitchSummary"];
         [controller updateInterface];
