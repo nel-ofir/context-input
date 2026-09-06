@@ -256,6 +256,50 @@ int main(void) {
         CIExpect(shortHebrewWhatsAppConversation.language == CIInputLanguageHebrew,
                  @"many short Hebrew WhatsApp messages classify as Hebrew");
 
+        CILanguageDecision *slackConversationWithEnglishAttachment = [classifier
+            classifyDraft:nil
+               nearbyTexts:@[
+                   @"בכיף",
+                   @"Nel Ofir",
+                   @"אחלה תודה",
+                   @"Hili Seker Amiel",
+                   @"יש בעיית קליטה אז אם לא זמין אפשר בוואטסאפ",
+                   @"0524631337",
+                   @"מעולה תודה",
+                   @"הכל טוב, אבקש ממנו",
+                   @"אבל יש מצב שאתה מבקש ממנו טלפון שאני אוכל ליצור איתו קשר?",
+                   @"Translate New",
+                   @"Today",
+                   @"Anton Nosovitsky is a Head of Data and Platform Leader specializing in building intelligent data platforms under strict constraints. Proven experience capturing evidence, architecting decisions, platform migrations, and cross-functional team leadership.",
+                   @"PROFESSIONAL SUMMARY Head of Data and Platform Leader specializing in building intelligent data platforms under strict constraints. PROFESSIONAL EXPERIENCE CyberproAI, Raanana, Israel. Built the company's core data platform from zero to production within a year.",
+                   @"Messages",
+                   @"Add canvas",
+                   @"Files and links",
+                   @"Search RiverPool",
+                   @"Message Hili Seker Amiel",
+               ]];
+        CIExpect(slackConversationWithEnglishAttachment.language == CIInputLanguageHebrew,
+                 @"recent Hebrew Slack messages outrank an older English attachment and UI");
+
+        CILanguageDecision *englishSlackConversationWithHebrewAttachment = [classifier
+            classifyDraft:nil
+               nearbyTexts:@[
+                   @"Sounds good",
+                   @"Nel Ofir",
+                   @"Thank you, I will call them now",
+                   @"Hili Seker Amiel",
+                   @"Please send me the phone number when you have it",
+                   @"Perfect, thanks",
+                   @"I could not reach them, so I will try WhatsApp",
+                   @"Translate New",
+                   @"Today",
+                   @"You are welcome",
+                   @"מסמך מצורף ארוך בעברית שמתאר פרויקט, ניסיון מקצועי, תהליכי עבודה, החלטות ארכיטקטורה ותוצאות עסקיות. הטקסט הזה ישן יותר מההודעות האחרונות ולכן אסור לו לשנות את שפת התגובה הנוכחית.",
+                   @"תקציר מקצועי ארוך בעברית עם פרטים רבים על ניסיון בניהול, פיתוח תוכנה, תשתיות נתונים ושיתוף פעולה בין צוותים. זהו תוכן של קובץ מצורף ולא ההודעה האחרונה בשיחה.",
+               ]];
+        CIExpect(englishSlackConversationWithHebrewAttachment.language == CIInputLanguageEnglish,
+                 @"recent English Slack messages outrank an older Hebrew attachment");
+
         CILanguageDecision *emoji = [classifier classifyText:@"👍 🎉" reason:@"test"];
         CIExpect(emoji == nil, @"emoji-only text is ambiguous");
 

@@ -1,9 +1,15 @@
 # ContextInput debug test checklist
 
-## Version 0.2.1 (Build 16)
+## Version 0.2.2 (Build 17)
 
-Confirm that Settings shows **Version 0.2.1 (Build 16)** beneath the ContextInput
+Confirm that Settings shows **Version 0.2.2 (Build 17)** beneath the ContextInput
 title before testing this build.
+
+To test source changes without replacing a signed beta installation, run
+`./scripts/install-debug.sh`. This installs `/Applications/ContextInputDebug.app`
+with a separate bundle identifier and no update feed. Enable **ContextInput Debug**
+in Accessibility for the test. The signed `ContextInput.app` and its existing
+permission remain unchanged.
 
 ### Warp known limitation
 
@@ -58,6 +64,9 @@ activity monitor cannot be installed, delayed switching is disabled for safety.
   synchronization and encryption notices must not influence the decision.
 - Focus an empty composer in an English ChatGPT/Codex session. The recent English
   conversation selects English.
+- In Slack, focus an empty composer after several recent Hebrew messages when an
+  older English attachment, link preview, or document is still visible. The recent
+  message cluster selects Hebrew; repeat with the languages reversed.
 - Confirm that short controls, URLs, filenames, timestamps, and code-like text do
   not override substantive conversation messages.
 - Focus a password or secure text field. ContextInput makes no change.
@@ -68,7 +77,7 @@ activity monitor cannot be installed, delayed switching is disabled for safety.
 - Open the menu-bar menu and Settings and confirm both contain **Check for
   Updates…**. With 0.2.0 being current, the action should report that there is no
   newer update after the beta feed is published.
-- For the 0.2.0 → 0.2.1 beta update, confirm Sparkle replaces the app in place
+- For the 0.2.1 → 0.2.2 beta update, confirm Sparkle replaces the app in place
   and System Settings still shows ContextInput enabled under Accessibility. Type
   in one English and one Hebrew control after relaunch; the macOS checkbox alone
   is not sufficient proof.

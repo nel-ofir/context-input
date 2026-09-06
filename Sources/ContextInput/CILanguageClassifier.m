@@ -7,6 +7,9 @@
                               reason:(NSString *)reason
                           stripLinks:(BOOL)stripLinks;
 - (CILanguageDecision *)classifyConversationTexts:(NSArray<NSString *> *)nearbyTexts;
+- (CILanguageDecision *)classifyConversationTexts:(NSArray<NSString *> *)nearbyTexts
+                                             limit:(NSUInteger)limit
+                                 minimumConfidence:(double)minimumConfidence;
 - (NSString *)sanitizedText:(NSString *)text stripLinks:(BOOL)stripLinks;
 - (void)countScriptsInText:(NSString *)text hebrew:(NSUInteger *)hebrew latin:(NSUInteger *)latin;
 - (double)codePenaltyForText:(NSString *)text;
@@ -86,13 +89,36 @@
 }
 
 - (CILanguageDecision *)classifyConversationTexts:(NSArray<NSString *> *)nearbyTexts {
+    // Accessibility APIs often expose attachments, link previews, or documents as
+    // very large text nodes. First ask whether the geometrically nearest context is
+    // already decisive. This models how a person chooses the language from the latest
+    // messages and prevents an older document from diluting a clear local consensus.
+    NSUInteger recentLimit = nearbyTexts.count < 10 ? nearbyTexts.count : 10;
+    CILanguageDecision *recentDecision = [self classifyConversationTexts:nearbyTexts
+                                                                    limit:recentLimit
+                                                        minimumConfidence:0.62];
+    if (recentDecision != nil || nearbyTexts.count <= recentLimit) {
+        return recentDecision;
+    }
+
+    // If the nearest items are mixed or mostly controls, use the wider context as a
+    // fallback. The per-node cap below still prevents a single enormous container
+    // from receiving unlimited influence.
+    NSUInteger fullLimit = nearbyTexts.count < 32 ? nearbyTexts.count : 32;
+    return [self classifyConversationTexts:nearbyTexts
+                                     limit:fullLimit
+                         minimumConfidence:0.55];
+}
+
+- (CILanguageDecision *)classifyConversationTexts:(NSArray<NSString *> *)nearbyTexts
+                                             limit:(NSUInteger)limit
+                                 minimumConfidence:(double)minimumConfidence {
     double hebrewEvidence = 0;
     double englishEvidence = 0;
     double strongestHebrewEvidence = 0;
     double strongestEnglishEvidence = 0;
     NSString *strongestHebrewText = nil;
     NSString *strongestEnglishText = nil;
-    NSUInteger limit = nearbyTexts.count < 32 ? nearbyTexts.count : 32;
 
     for (NSUInteger index = 0; index < limit; index++) {
         NSString *cleaned = [self sanitizedText:nearbyTexts[index] stripLinks:YES];
@@ -142,7 +168,7 @@
         : CIInputLanguageEnglish;
     double winningEvidence = fmax(hebrewEvidence, englishEvidence);
     double confidence = winningEvidence / totalEvidence;
-    if (confidence < 0.55) {
+    if (confidence < minimumConfidence) {
         return nil;
     }
     NSString *evidence = language == CIInputLanguageHebrew
