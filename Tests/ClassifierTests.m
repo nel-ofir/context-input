@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import "CIApplicationCapabilities.h"
+#import "CIContextGeometry.h"
 #import "CIContextTextSanitizer.h"
 #import "CIDraftSanitizer.h"
 #import "CILanguageClassifier.h"
@@ -106,6 +107,20 @@ int main(void) {
                  @"normal controls are not treated as opaque terminal surfaces");
         CIExpect(![CIApplicationCapabilities isOpaqueAccessibilityRole:@"AXTextField"],
                  @"native text fields stay on the normal classification path");
+
+        CGRect composerFrame = CGRectMake(200, 900, 800, 100);
+        CIExpect([CIContextGeometry proximityScoreForCandidate:CGRectMake(20, 820, 185, 40)
+                                                       focused:composerFrame
+                                               hasFocusedFrame:YES] == nil,
+                 @"a tiny border overlap does not admit text from an adjacent sidebar");
+        CIExpect([CIContextGeometry proximityScoreForCandidate:CGRectMake(250, 820, 300, 40)
+                                                       focused:composerFrame
+                                               hasFocusedFrame:YES] != nil,
+                 @"message text in the composer's horizontal column is retained");
+        CIExpect([CIContextGeometry proximityScoreForCandidate:CGRectMake(250, 820, 20, 40)
+                                                       focused:composerFrame
+                                               hasFocusedFrame:YES] != nil,
+                 @"narrow message text remains valid when it fully overlaps the composer");
 
         NSString *whatsAppMessage = [CIContextTextSanitizer
             textFromAccessibilityText:@"message, לא איפה אתם?, 23Augustat11:49, Received from אמא עבודה"

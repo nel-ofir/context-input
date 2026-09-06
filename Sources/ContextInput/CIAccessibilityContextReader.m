@@ -1,5 +1,6 @@
 #import "CIAccessibilityContextReader.h"
 #import "CIApplicationCapabilities.h"
+#import "CIContextGeometry.h"
 #import "CIContextTextSanitizer.h"
 #import "CIDraftSanitizer.h"
 #import <AppKit/AppKit.h>
@@ -392,9 +393,9 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
         NSString *elementIdentifier = CIAXStringAttribute(element, kAXIdentifierAttribute);
         CGRect elementFrame = CGRectZero;
         if (CIAXFrame(element, &elementFrame)) {
-            NSNumber *score = [self proximityScoreForCandidate:elementFrame
-                                                       focused:focusedFrame
-                                               hasFocusedFrame:hasFocusedFrame];
+            NSNumber *score = [CIContextGeometry proximityScoreForCandidate:elementFrame
+                                                                     focused:focusedFrame
+                                                             hasFocusedFrame:hasFocusedFrame];
             if (score != nil) {
                 for (NSString *text in [self textValuesFromElement:element]) {
                     NSString *normalized = [self normalizedText:text];
@@ -570,32 +571,6 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
     }
     id children = CIAXAttribute(element, kAXChildrenAttribute);
     return [children isKindOfClass:NSArray.class] ? children : @[];
-}
-
-- (NSNumber *)proximityScoreForCandidate:(CGRect)candidate
-                                  focused:(CGRect)focused
-                          hasFocusedFrame:(BOOL)hasFocusedFrame {
-    if (candidate.size.width <= 0 || candidate.size.height <= 0) {
-        return nil;
-    }
-    if (!hasFocusedFrame) {
-        return @(10000.0 - CGRectGetMaxY(candidate));
-    }
-
-    // Accessibility coordinates start at the top-left of the primary display.
-    CGFloat verticalGap = CGRectGetMinY(focused) - CGRectGetMaxY(candidate);
-    if (verticalGap < -8 || verticalGap > 1600) {
-        return nil;
-    }
-
-    CGFloat horizontalOverlap = fmin(CGRectGetMaxX(candidate), CGRectGetMaxX(focused)) -
-        fmax(CGRectGetMinX(candidate), CGRectGetMinX(focused));
-    if (horizontalOverlap <= 0) {
-        return nil;
-    }
-    CGFloat nonnegativeGap = verticalGap > 0 ? verticalGap : 0;
-    CGFloat centerDistance = fabs(CGRectGetMidX(candidate) - CGRectGetMidX(focused));
-    return @(nonnegativeGap + (centerDistance * 0.08));
 }
 
 - (NSString *)normalizedText:(NSString *)text {
