@@ -169,6 +169,20 @@ int main(void) {
         CIExpect([slackRealMessage isEqualToString:@"הכל טוב, אבקש ממנו"],
                  @"Slack conversation messages remain available as evidence");
 
+        NSString *slackWrappedHebrewMessage = [CIContextTextSanitizer
+            textFromAccessibilityText:@"Nel Ofir: 12:04 .בכיף PM."
+                    elementIdentifier:nil
+                      applicationName:@"Slack"];
+        CIExpect([slackWrappedHebrewMessage isEqualToString:@"בכיף"],
+                 @"Slack's RTL parent message label is reduced to its Hebrew body");
+
+        NSString *slackWrappedLongerHebrewMessage = [CIContextTextSanitizer
+            textFromAccessibilityText:@"Hili Seker Amiel: 12:03 .אחלה תודה PM."
+                    elementIdentifier:nil
+                      applicationName:@"Slack"];
+        CIExpect([slackWrappedLongerHebrewMessage isEqualToString:@"אחלה תודה"],
+                 @"Slack author and timestamp metadata do not become language evidence");
+
         NSString *explicitPlaceholder = [CIDraftSanitizer
             draftFromAccessibilityValue:@"Do anything"
                        placeholderValue:@"Do anything"

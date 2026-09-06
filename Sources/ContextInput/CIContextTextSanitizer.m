@@ -23,6 +23,30 @@
         if (pausedNotificationsFragment || completePausedNotificationsNotice) {
             return nil;
         }
+
+        // Chromium exposes a Slack message both as a leaf text node and as a
+        // parent label. In right-to-left conversations that parent is formatted
+        // like "Author: 12:04 .message PM.". Strip the author and timestamp so
+        // they cannot turn a short Hebrew reply into English evidence; the
+        // reader's normal exact deduplication then collapses parent and leaf.
+        static NSRegularExpression *messageWrapperExpression;
+        static dispatch_once_t onceToken;
+        dispatch_once(&onceToken, ^{
+            messageWrapperExpression = [NSRegularExpression
+                regularExpressionWithPattern:@"^.+?:\\s*\\d{1,2}:\\d{2}\\s+\\.(.+?)\\s+(?:AM|PM)\\.?$"
+                                       options:NSRegularExpressionCaseInsensitive
+                                         error:nil];
+        });
+        NSTextCheckingResult *wrapperMatch = [messageWrapperExpression
+            firstMatchInString:slackText
+                       options:0
+                         range:NSMakeRange(0, slackText.length)];
+        if (wrapperMatch.numberOfRanges > 1) {
+            NSString *message = [slackText substringWithRange:[wrapperMatch rangeAtIndex:1]];
+            message = [message stringByTrimmingCharactersInSet:
+                NSCharacterSet.whitespaceAndNewlineCharacterSet];
+            return message.length > 0 ? message : nil;
+        }
     }
 
     BOOL isWhatsApp = [applicationName localizedCaseInsensitiveContainsString:@"whatsapp"];
