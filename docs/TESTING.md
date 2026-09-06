@@ -1,8 +1,8 @@
 # ContextInput debug test checklist
 
-## Version 0.2.2 (Build 21)
+## Version 0.2.2 (Build 22)
 
-Confirm that Settings shows **Version 0.2.2 (Build 21)** beneath the ContextInput
+Confirm that Settings shows **Version 0.2.2 (Build 22)** beneath the ContextInput
 title before testing this build.
 
 To test source changes without replacing a signed beta installation, run

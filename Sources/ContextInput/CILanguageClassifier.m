@@ -119,6 +119,8 @@
     double strongestEnglishEvidence = 0;
     NSString *strongestHebrewText = nil;
     NSString *strongestEnglishText = nil;
+    NSUInteger dominantHebrewItems = 0;
+    NSUInteger dominantEnglishItems = 0;
 
     for (NSUInteger index = 0; index < limit; index++) {
         NSString *cleaned = [self sanitizedText:nearbyTexts[index] stripLinks:YES];
@@ -142,12 +144,23 @@
             substanceMultiplier = 0.70;
         }
         double recencyMultiplier = 1.0 / (1.0 + (0.07 * (double)index));
-        double weight = cappedLetters * substanceMultiplier * recencyMultiplier *
-            [self codePenaltyForText:cleaned];
-        double candidateHebrew = weight * ((double)hebrewCount / (double)total);
-        double candidateEnglish = weight * ((double)latinCount / (double)total);
+        double codePenalty = [self codePenaltyForText:cleaned];
+        double hebrewShare = (double)hebrewCount / (double)total;
+        double englishShare = (double)latinCount / (double)total;
+        double weight = cappedLetters * substanceMultiplier * recencyMultiplier * codePenalty;
+        double candidateHebrew = weight * hebrewShare;
+        double candidateEnglish = weight * englishShare;
         hebrewEvidence += candidateHebrew;
         englishEvidence += candidateEnglish;
+
+        // Distinct message-sized nodes are a useful guard against metadata-heavy
+        // wrappers. Only clear, non-code single-script items vote here; names or
+        // controls in the other script must be outnumbered by at least two items.
+        if (codePenalty >= 0.5 && hebrewShare >= 0.80) {
+            dominantHebrewItems += 1;
+        } else if (codePenalty >= 0.5 && englishShare >= 0.80) {
+            dominantEnglishItems += 1;
+        }
 
         if (candidateHebrew > strongestHebrewEvidence) {
             strongestHebrewEvidence = candidateHebrew;
@@ -168,6 +181,20 @@
         : CIInputLanguageEnglish;
     double winningEvidence = fmax(hebrewEvidence, englishEvidence);
     double confidence = winningEvidence / totalEvidence;
+    NSUInteger dominantItemCount = dominantHebrewItems + dominantEnglishItems;
+    BOOL hebrewNodeConsensus = dominantHebrewItems >= 3 &&
+        dominantHebrewItems >= dominantEnglishItems + 2;
+    BOOL englishNodeConsensus = dominantEnglishItems >= 3 &&
+        dominantEnglishItems >= dominantHebrewItems + 2;
+    if (confidence < 0.80 && (hebrewNodeConsensus || englishNodeConsensus)) {
+        language = hebrewNodeConsensus ? CIInputLanguageHebrew : CIInputLanguageEnglish;
+        NSUInteger winningItems = hebrewNodeConsensus
+            ? dominantHebrewItems
+            : dominantEnglishItems;
+        confidence = dominantItemCount > 0
+            ? (double)winningItems / (double)dominantItemCount
+            : confidence;
+    }
     if (confidence < minimumConfidence) {
         return nil;
     }

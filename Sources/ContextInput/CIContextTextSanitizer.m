@@ -10,7 +10,12 @@
     }
     BOOL isSlack = [applicationName localizedCaseInsensitiveContainsString:@"slack"];
     if (isSlack) {
-        NSString *slackText = [text stringByTrimmingCharactersInSet:
+        NSString *slackText = [text stringByReplacingOccurrencesOfString:
+            @"[\u200E\u200F\u202A-\u202E\u2066-\u2069\uFFFC]"
+                                                          withString:@""
+                                                             options:NSRegularExpressionSearch
+                                                               range:NSMakeRange(0, text.length)];
+        slackText = [slackText stringByTrimmingCharactersInSet:
             NSCharacterSet.whitespaceAndNewlineCharacterSet];
         NSString *lowercaseSlackText = slackText.lowercaseString;
         BOOL pausedNotificationsFragment =
@@ -29,24 +34,34 @@
         // like "Author: 12:04 .message PM.". Strip the author and timestamp so
         // they cannot turn a short Hebrew reply into English evidence; the
         // reader's normal exact deduplication then collapses parent and leaf.
-        static NSRegularExpression *messageWrapperExpression;
+        static NSArray<NSRegularExpression *> *messageWrapperExpressions;
         static dispatch_once_t onceToken;
         dispatch_once(&onceToken, ^{
-            messageWrapperExpression = [NSRegularExpression
-                regularExpressionWithPattern:@"^.+?:\\s*\\d{1,2}:\\d{2}\\s+\\.(.+?)\\s+(?:AM|PM)\\.?$"
-                                       options:NSRegularExpressionCaseInsensitive
-                                         error:nil];
+            messageWrapperExpressions = @[
+                [NSRegularExpression
+                    regularExpressionWithPattern:@"^.+?:\\s*\\d{1,2}:\\d{2}\\s*(?:AM|PM)\\.?\\s*(.+?)\\s*$"
+                                           options:NSRegularExpressionCaseInsensitive
+                                             error:nil],
+                [NSRegularExpression
+                    regularExpressionWithPattern:@"^.+?:\\s*\\d{1,2}:\\d{2}\\s+\\.(.+?)\\s+(?:AM|PM)\\.?$"
+                                           options:NSRegularExpressionCaseInsensitive
+                                             error:nil],
+            ];
         });
-        NSTextCheckingResult *wrapperMatch = [messageWrapperExpression
-            firstMatchInString:slackText
-                       options:0
-                         range:NSMakeRange(0, slackText.length)];
-        if (wrapperMatch.numberOfRanges > 1) {
-            NSString *message = [slackText substringWithRange:[wrapperMatch rangeAtIndex:1]];
-            message = [message stringByTrimmingCharactersInSet:
-                NSCharacterSet.whitespaceAndNewlineCharacterSet];
-            return message.length > 0 ? message : nil;
+        for (NSRegularExpression *expression in messageWrapperExpressions) {
+            NSTextCheckingResult *wrapperMatch = [expression
+                firstMatchInString:slackText
+                           options:0
+                             range:NSMakeRange(0, slackText.length)];
+            if (wrapperMatch.numberOfRanges > 1) {
+                NSString *message = [slackText substringWithRange:[wrapperMatch rangeAtIndex:1]];
+                NSCharacterSet *wrapperEdges = [NSCharacterSet
+                    characterSetWithCharactersInString:@" \t\r\n."];
+                message = [message stringByTrimmingCharactersInSet:wrapperEdges];
+                return message.length > 0 ? message : nil;
+            }
         }
+        return slackText;
     }
 
     BOOL isWhatsApp = [applicationName localizedCaseInsensitiveContainsString:@"whatsapp"];

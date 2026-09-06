@@ -183,6 +183,20 @@ int main(void) {
         CIExpect([slackWrappedLongerHebrewMessage isEqualToString:@"אחלה תודה"],
                  @"Slack author and timestamp metadata do not become language evidence");
 
+        NSString *slackLogicalOrderHebrewMessage = [CIContextTextSanitizer
+            textFromAccessibilityText:@"Nel Ofir: 12:04 PM. \u2067בכיף\u2069."
+                    elementIdentifier:nil
+                      applicationName:@"Slack"];
+        CIExpect([slackLogicalOrderHebrewMessage isEqualToString:@"בכיף"],
+                 @"Slack's logical timestamp order and bidi markers are stripped");
+
+        NSString *slackLogicalOrderEnglishMessage = [CIContextTextSanitizer
+            textFromAccessibilityText:@"Nel Ofir: 12:04 PM. Sounds good."
+                    elementIdentifier:nil
+                      applicationName:@"Slack"];
+        CIExpect([slackLogicalOrderEnglishMessage isEqualToString:@"Sounds good"],
+                 @"Slack's English message body is preserved without author metadata");
+
         NSString *explicitPlaceholder = [CIDraftSanitizer
             draftFromAccessibilityValue:@"Do anything"
                        placeholderValue:@"Do anything"
@@ -360,6 +374,35 @@ int main(void) {
                ]];
         CIExpect(slackConversationBelowPausedNotice.language == CIInputLanguageHebrew,
                  @"Hebrew Slack messages win after a nearby status notice is removed");
+
+        CILanguageDecision *metadataWeightedSlackConversation = [classifier
+            classifyDraft:nil
+               nearbyTexts:@[
+                   @"Hili Seker Amiel",
+                   @"Delivery status and notification settings",
+                   @"בכיף",
+                   @"Nel Ofir",
+                   @"אחלה תודה",
+                   @"הכל טוב, אבקש ממנו",
+                   @"מעולה תודה",
+                   @"יש בעיית קליטה אז אפשר לנסות שוב בוואטסאפ",
+               ]];
+        CIExpect(metadataWeightedSlackConversation.language == CIInputLanguageHebrew,
+                 @"a clear Hebrew node consensus breaks a sub-80-percent metadata tie");
+
+        CILanguageDecision *englishNodeConsensus = [classifier
+            classifyDraft:nil
+               nearbyTexts:@[
+                   @"הילה כהן",
+                   @"הגדרות התראות ופעולות נוספות",
+                   @"Sounds good",
+                   @"Thank you",
+                   @"Please send it when it is ready",
+                   @"I will call them now",
+                   @"Perfect, talk soon",
+               ]];
+        CIExpect(englishNodeConsensus.language == CIInputLanguageEnglish,
+                 @"the node-consensus tie-breaker protects English conversations symmetrically");
 
         CILanguageDecision *englishSlackConversationWithHebrewAttachment = [classifier
             classifyDraft:nil
