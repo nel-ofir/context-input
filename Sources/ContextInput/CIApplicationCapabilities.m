@@ -4,6 +4,18 @@
 @implementation CIApplicationCapabilities
 
 + (BOOL)infoDictionaryDeclaresTerminalSupport:(NSDictionary *)infoDictionary {
+    NSString *category = [infoDictionary[@"LSApplicationCategoryType"]
+        isKindOfClass:NSString.class]
+        ? infoDictionary[@"LSApplicationCategoryType"]
+        : nil;
+    BOOL terminalCategory = [@[
+        @"public.app-category.developer-tools",
+        @"public.app-category.utilities",
+    ] containsObject:category];
+    if (!terminalCategory) {
+        return NO;
+    }
+
     id documentTypesObject = infoDictionary[@"CFBundleDocumentTypes"];
     if (![documentTypesObject isKindOfClass:NSArray.class]) {
         return NO;

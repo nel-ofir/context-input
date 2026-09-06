@@ -47,6 +47,7 @@ int main(void) {
         }
 
         NSDictionary *shellRoleApplication = @{
+            @"LSApplicationCategoryType": @"public.app-category.developer-tools",
             @"CFBundleDocumentTypes": @[
                 @{
                     @"CFBundleTypeName": @"Terminal shell script",
@@ -60,6 +61,7 @@ int main(void) {
                  @"declared shell document role identifies a terminal-capable app");
 
         NSDictionary *terminalUTIApplication = @{
+            @"LSApplicationCategoryType": @"public.app-category.utilities",
             @"CFBundleDocumentTypes": @[
                 @{
                     @"CFBundleTypeRole": @"Viewer",
@@ -70,6 +72,19 @@ int main(void) {
         CIExpect([CIApplicationCapabilities
                      infoDictionaryDeclaresTerminalSupport:terminalUTIApplication],
                  @"terminal shell-script UTI identifies a terminal-capable app");
+
+        NSDictionary *businessApplicationWithShellHandler = @{
+            @"LSApplicationCategoryType": @"public.app-category.business",
+            @"CFBundleDocumentTypes": @[
+                @{
+                    @"CFBundleTypeRole": @"Shell",
+                    @"LSItemContentTypes": @[@"com.apple.terminal.shell-script"],
+                },
+            ],
+        };
+        CIExpect(![CIApplicationCapabilities
+                      infoDictionaryDeclaresTerminalSupport:businessApplicationWithShellHandler],
+                 @"a business app is never treated as an opaque terminal merely for handling shell files");
 
         NSDictionary *ordinaryDeveloperTool = @{
             @"LSApplicationCategoryType": @"public.app-category.developer-tools",
