@@ -4,6 +4,17 @@
 @interface CIAppController (SettingsTest)
 - (void)buildSettingsWindow;
 - (void)updateInterface;
+- (void)showSettings:(id)sender;
+@end
+
+@interface CIReopenTestController : CIAppController
+@property(nonatomic) BOOL didRequestSettings;
+@end
+
+@implementation CIReopenTestController
+- (void)showSettings:(id)sender {
+    self.didRequestSettings = YES;
+}
 @end
 
 // Does not launch monitoring, activate another app, or select any input source.
@@ -32,6 +43,14 @@ int main(void) {
             scroll.contentView.bounds.size.width, scroll.contentView.bounds.size.height, labelRect.size.height);
         if (!fits) {
             fputs("FAIL: Settings diagnostics must fit the scrollable document.\n", stderr);
+            return 1;
+        }
+
+        CIReopenTestController *reopenController = [[CIReopenTestController alloc] init];
+        BOOL handled = [reopenController applicationShouldHandleReopen:NSApplication.sharedApplication
+                                                     hasVisibleWindows:NO];
+        if (!handled || !reopenController.didRequestSettings) {
+            fputs("FAIL: Reopening the running menu-bar app must reveal Settings.\n", stderr);
             return 1;
         }
         puts("Settings layout smoke test passed.");

@@ -151,6 +151,12 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
     return NO;
 }
 
+- (BOOL)applicationShouldHandleReopen:(NSApplication *)sender
+                    hasVisibleWindows:(BOOL)hasVisibleWindows {
+    [self showSettings:nil];
+    return YES;
+}
+
 #pragma mark - Focus monitoring
 
 - (void)frontmostApplicationChanged:(NSNotification *)notification {

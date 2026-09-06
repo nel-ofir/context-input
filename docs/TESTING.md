@@ -1,8 +1,8 @@
 # ContextInput debug test checklist
 
-## Version 0.2.2 (Build 23)
+## Version 0.2.3 (Build 24)
 
-Confirm that Settings shows **Version 0.2.2 (Build 23)** beneath the ContextInput
+Confirm that Settings shows **Version 0.2.3 (Build 24)** beneath the ContextInput
 title before testing this build.
 
 To test source changes without replacing a signed beta installation, run
@@ -33,6 +33,9 @@ activity monitor cannot be installed, delayed switching is disabled for safety.
 
 ### Regression checklist
 
+- Close Settings, then launch ContextInput again from Spotlight, Finder, or the
+  Applications folder. The already-running app must reopen Settings even when
+  its menu-bar item is hidden by limited space.
 - Press Command-W while Settings is focused. The window closes, while the אA
   menu-bar app continues running and can reopen Settings.
 - Focus the Codex embedded terminal while Hebrew is active. ContextInput selects
@@ -77,7 +80,7 @@ activity monitor cannot be installed, delayed switching is disabled for safety.
 - Open the menu-bar menu and Settings and confirm both contain **Check for
   Updates…**. With 0.2.0 being current, the action should report that there is no
   newer update after the beta feed is published.
-- For the 0.2.1 → 0.2.2 beta update, confirm Sparkle replaces the app in place
+- For the 0.2.2 → 0.2.3 beta update, confirm Sparkle replaces the app in place
   and System Settings still shows ContextInput enabled under Accessibility. Type
   in one English and one Hebrew control after relaunch; the macOS checkbox alone
   is not sufficient proof.
