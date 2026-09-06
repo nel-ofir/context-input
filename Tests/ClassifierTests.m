@@ -148,6 +148,27 @@ int main(void) {
         CIExpect([whatsAppTitle isEqualToString:@"אמא עבודה"],
                  @"WhatsApp local conversation title is extracted");
 
+        NSString *slackPausedNotifications = [CIContextTextSanitizer
+            textFromAccessibilityText:@"paused their notifications"
+                    elementIdentifier:nil
+                      applicationName:@"Slack"];
+        CIExpect(slackPausedNotifications == nil,
+                 @"Slack's split paused-notifications status is not conversation evidence");
+
+        NSString *slackCompletePausedNotifications = [CIContextTextSanitizer
+            textFromAccessibilityText:@"Hili Seker Amiel has paused their notifications"
+                    elementIdentifier:nil
+                      applicationName:@"Slack"];
+        CIExpect(slackCompletePausedNotifications == nil,
+                 @"Slack's complete paused-notifications status is not conversation evidence");
+
+        NSString *slackRealMessage = [CIContextTextSanitizer
+            textFromAccessibilityText:@"הכל טוב, אבקש ממנו"
+                    elementIdentifier:nil
+                      applicationName:@"Slack"];
+        CIExpect([slackRealMessage isEqualToString:@"הכל טוב, אבקש ממנו"],
+                 @"Slack conversation messages remain available as evidence");
+
         NSString *explicitPlaceholder = [CIDraftSanitizer
             draftFromAccessibilityValue:@"Do anything"
                        placeholderValue:@"Do anything"
@@ -310,6 +331,21 @@ int main(void) {
                ]];
         CIExpect(slackConversationWithEnglishAttachment.language == CIInputLanguageHebrew,
                  @"recent Hebrew Slack messages outrank an older English attachment and UI");
+
+        CILanguageDecision *slackConversationBelowPausedNotice = [classifier
+            classifyDraft:nil
+               nearbyTexts:@[
+                   @"Hili Seker Amiel",
+                   @"בכיף",
+                   @"Nel Ofir",
+                   @"אחלה תודה",
+                   @"יש בעיית קליטה אז אם לא זמין אפשר בוואטסאפ",
+                   @"0524631337",
+                   @"מעולה תודה",
+                   @"הכל טוב, אבקש ממנו",
+               ]];
+        CIExpect(slackConversationBelowPausedNotice.language == CIInputLanguageHebrew,
+                 @"Hebrew Slack messages win after a nearby status notice is removed");
 
         CILanguageDecision *englishSlackConversationWithHebrewAttachment = [classifier
             classifyDraft:nil

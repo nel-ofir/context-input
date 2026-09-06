@@ -8,6 +8,23 @@
     if (text.length == 0) {
         return nil;
     }
+    BOOL isSlack = [applicationName localizedCaseInsensitiveContainsString:@"slack"];
+    if (isSlack) {
+        NSString *slackText = [text stringByTrimmingCharactersInSet:
+            NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        NSString *lowercaseSlackText = slackText.lowercaseString;
+        BOOL pausedNotificationsFragment =
+            [lowercaseSlackText isEqualToString:@"paused their notifications"] ||
+            [lowercaseSlackText isEqualToString:@"paused notifications"] ||
+            [lowercaseSlackText isEqualToString:@"has"];
+        BOOL completePausedNotificationsNotice =
+            [lowercaseSlackText containsString:@" has paused their notifications"] ||
+            [lowercaseSlackText containsString:@" has paused notifications"];
+        if (pausedNotificationsFragment || completePausedNotificationsNotice) {
+            return nil;
+        }
+    }
+
     BOOL isWhatsApp = [applicationName localizedCaseInsensitiveContainsString:@"whatsapp"];
     if (!isWhatsApp) {
         return text;
