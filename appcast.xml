@@ -20,7 +20,7 @@
 - Includes the previously tested ChatGPT, WhatsApp, URL-field, terminal-detection, version-display, and Command-W fixes.
 - Removes the unsuccessful Warp input-source workarounds. Warp remains a documented compatibility limitation.
 ]]></description>
-            <enclosure url="https://github.com/nel-ofir/context-input/releases/download/v0.2.0-beta.1/ContextInput-0.2.0-arm64.zip" length="1639742" type="application/octet-stream" sparkle:edSignature="BERkZmLujMdwd8/Eg5SMe4RaAe+tKJjHjamJQT/zhc1jmlXVW4/V6qeyU+du1t89v8/yQLnxqth/Uat1c4/uAw=="/>
+            <enclosure url="https://github.com/nel-ofir/context-input/releases/download/v0.2.0-beta.1/ContextInput-0.2.0-arm64.zip" length="1639740" type="application/octet-stream" sparkle:edSignature="9fJlGagudfqj1gNCNRg5a1EnscN9dLkqiEHXnJejpxHb0087FzN2OcxRWJlhdwYxSv1mamvSRtMdghkIJfuQAQ=="/>
         </item>
     </channel>
 </rss>
