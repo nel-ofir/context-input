@@ -1,8 +1,8 @@
 # ContextInput debug test checklist
 
-## Version 0.2.0 (Build 15)
+## Version 0.2.1 (Build 16)
 
-Confirm that Settings shows **Version 0.2.0 (Build 15)** beneath the ContextInput
+Confirm that Settings shows **Version 0.2.1 (Build 16)** beneath the ContextInput
 title before testing this build.
 
 ### Warp known limitation
@@ -68,7 +68,7 @@ activity monitor cannot be installed, delayed switching is disabled for safety.
 - Open the menu-bar menu and Settings and confirm both contain **Check for
   Updates…**. With 0.2.0 being current, the action should report that there is no
   newer update after the beta feed is published.
-- For the first post-0.2.0 beta update, confirm Sparkle replaces the app in place
+- For the 0.2.0 → 0.2.1 beta update, confirm Sparkle replaces the app in place
   and System Settings still shows ContextInput enabled under Accessibility. Type
   in one English and one Hebrew control after relaunch; the macOS checkbox alone
   is not sufficient proof.

@@ -79,7 +79,7 @@ free, friend-testable beta build with a stable identity and automatic updates:
 ./scripts/package-beta.sh
 ```
 
-This creates both `dist/releases/ContextInput-0.2.0-arm64.dmg` for installation
+This creates both `dist/releases/ContextInput-0.2.1-arm64.dmg` for installation
 and a signed ZIP used by the automatic updater. See
 [`docs/RELEASING.md`](docs/RELEASING.md) before publishing the GitHub release.
 
