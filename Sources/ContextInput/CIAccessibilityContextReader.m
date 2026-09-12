@@ -247,7 +247,7 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
                                              hasFocusedFrame:hasFocusedFrame];
     AXUIElementRef root = (__bridge AXUIElementRef)contextRootObject;
     NSMutableArray<CIAccessibilityCandidate *> *candidates = [NSMutableArray array];
-    NSMutableSet<NSNumber *> *visited = [NSMutableSet set];
+    NSMutableSet *visited = [NSMutableSet set];
     // Web-based conversation views can be substantially deeper than native AppKit
     // hierarchies. Keep the scan bounded, but allow enough nodes to reach the most
     // recent messages near a composer.
@@ -256,12 +256,52 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
               focused:focused
          focusedFrame:focusedFrame
        hasFocusedFrame:hasFocusedFrame
+         fallbackScan:NO
                 depth:0
             remaining:&remaining
                visited:visited
             candidates:candidates
           terminalLike:terminalLike
        applicationName:applicationName];
+
+    // A tall composer wrapper can satisfy the pane geometry even though the
+    // message list is its sibling. Retry enclosing containers only after an
+    // empty scan; preserve the focused-column filter and never leave this window.
+    NSMutableSet *fallbackRoots = [NSMutableSet set];
+    NSInteger fallbackScopes = 0;
+    if (candidates.count == 0) [visited removeAllObjects];
+    remaining = 1800;
+    for (NSInteger level = 0; hasFocusedFrame && candidates.count == 0 &&
+         remaining > 0 && level < 16; level++) {
+        if ([fallbackRoots containsObject:contextRootObject]) break;
+        [fallbackRoots addObject:contextRootObject];
+        fallbackScopes += 1;
+        // First retry this root using the complete child list. VisibleChildren
+        // can omit the transcript while still reporting composer controls.
+        [self walkElement:root focused:focused focusedFrame:focusedFrame
+            hasFocusedFrame:hasFocusedFrame fallbackScan:YES depth:0 remaining:&remaining
+            visited:visited candidates:candidates terminalLike:terminalLike
+            applicationName:applicationName];
+        if (candidates.count > 0 || CFEqual(root, windowRoot)) break;
+        id parentObject = CIAXAttribute(root, kAXParentAttribute);
+        if (parentObject == nil ||
+            CFGetTypeID((__bridge CFTypeRef)parentObject) != AXUIElementGetTypeID() ||
+            [fallbackRoots containsObject:parentObject]) {
+            break;
+        }
+        AXUIElementRef parent = (__bridge AXUIElementRef)parentObject;
+        NSString *parentRole = CIAXStringAttribute(parent, kAXRoleAttribute);
+        if ([parentRole isEqualToString:@"AXApplication"] ||
+            ([parentRole isEqualToString:@"AXWindow"] && !CFEqual(parent, windowRoot))) {
+            break;
+        }
+        contextRootObject = parentObject;
+        root = parent;
+    }
+    if (fallbackScopes > 0) {
+        focusDescription = [focusDescription stringByAppendingFormat:
+            @" / context fallback: %ld scopes", (long)fallbackScopes];
+    }
 
     [candidates sortUsingComparator:^NSComparisonResult(CIAccessibilityCandidate *left,
                                                           CIAccessibilityCandidate *right) {
@@ -356,9 +396,10 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
              focused:(AXUIElementRef)focused
         focusedFrame:(CGRect)focusedFrame
       hasFocusedFrame:(BOOL)hasFocusedFrame
+         fallbackScan:(BOOL)fallbackScan
                depth:(NSInteger)depth
            remaining:(NSInteger *)remaining
-              visited:(NSMutableSet<NSNumber *> *)visited
+              visited:(NSMutableSet *)visited
            candidates:(NSMutableArray<CIAccessibilityCandidate *> *)candidates
          terminalLike:(BOOL)terminalLike
       applicationName:(NSString *)applicationName {
@@ -367,11 +408,25 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
     }
     *remaining -= 1;
 
-    NSNumber *elementHash = @(CFHash(element));
-    if ([visited containsObject:elementHash]) {
+    id elementObject = (__bridge id)element;
+    if ([visited containsObject:elementObject]) {
         return;
     }
-    [visited addObject:elementHash];
+    [visited addObject:elementObject];
+
+    if (fallbackScan && hasFocusedFrame) {
+        CGRect frame = CGRectZero;
+        if (CIAXFrame(element, &frame) && frame.size.width > 0 && frame.size.height > 0) {
+            CGFloat overlap = fmin(CGRectGetMaxX(frame), CGRectGetMaxX(focusedFrame)) -
+                fmax(CGRectGetMinX(frame), CGRectGetMinX(focusedFrame));
+            CGFloat minimumOverlap = fmin(36.0, fmin(frame.size.width, focusedFrame.size.width) * 0.18);
+            if (overlap < minimumOverlap || CGRectGetMinY(frame) > CGRectGetMaxY(focusedFrame)) {
+                // Off-column sidebars/documents cannot supply conversation text.
+                // Prune the subtree so it cannot exhaust the fallback node budget.
+                return;
+            }
+        }
+    }
 
     NSString *role = CIAXStringAttribute(element, kAXRoleAttribute);
     role = role != nil ? role : @"";
@@ -422,14 +477,24 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
     // Accessibility children are normally in visual/document order. Walking in
     // reverse reaches the bottom of a long chat (the newest messages) before the
     // traversal budget is consumed by older content and page chrome.
-    for (id childObject in [[self childrenOfElement:element] reverseObjectEnumerator]) {
+    NSArray *children = [self childrenOfElement:element];
+    if (fallbackScan) {
+        id allChildren = CIAXAttribute(element, kAXChildrenAttribute);
+        if ([allChildren isKindOfClass:NSArray.class]) {
+            NSMutableOrderedSet *combined = [NSMutableOrderedSet orderedSetWithArray:allChildren];
+            [combined addObjectsFromArray:children];
+            children = combined.array;
+        }
+    }
+    for (id childObject in [children reverseObjectEnumerator]) {
         if (CFGetTypeID((__bridge CFTypeRef)childObject) != AXUIElementGetTypeID()) {
             continue;
         }
         [self walkElement:(__bridge AXUIElementRef)childObject
                   focused:focused
              focusedFrame:focusedFrame
-           hasFocusedFrame:hasFocusedFrame
+             hasFocusedFrame:hasFocusedFrame
+                fallbackScan:fallbackScan
                     depth:depth + 1
                 remaining:remaining
                    visited:visited

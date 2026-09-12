@@ -1,9 +1,21 @@
 # ContextInput debug test checklist
 
-## Version 0.2.3 (Build 24)
+## Version 0.2.4 (Build 25)
 
-Confirm that Settings shows **Version 0.2.3 (Build 24)** beneath the ContextInput
+Confirm that Settings shows **Version 0.2.4 (Build 25)** beneath the ContextInput
 title before testing this build.
+
+The context-reader tests use synthetic accessibility trees, not live ChatGPT
+sessions. They reproduce an empty composer container with messages in a sibling,
+incomplete visible-child lists, and large off-column document panels in Hebrew
+and English. Live validation is still required to confirm the reported conversation
+failure is resolved; this beta is available through the update feed for testing.
+
+In the affected Hebrew conversation and a separate English conversation, focus
+the empty composer with a document/schedule panel open, then closed. Confirm the
+correct language and nonzero context count. If fallback runs, Focused element
+includes `context fallback: N scopes`. Also test an empty conversation: it should
+not infer a language from a sidebar or neighboring document.
 
 To test source changes without replacing a signed beta installation, run
 `./scripts/install-debug.sh`. This installs `/Applications/ContextInputDebug.app`

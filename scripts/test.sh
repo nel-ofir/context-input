@@ -46,3 +46,5 @@ clang \
     -o "$BUILD_DIR/SystemSmokeTests"
 
 "$BUILD_DIR/SystemSmokeTests"
+
+zsh "$SCRIPT_DIR/test-context-reader.sh"
