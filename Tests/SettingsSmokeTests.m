@@ -26,6 +26,8 @@ int main(void) {
         [controller setValue:[@"Before: Hebrew → target: ABC • +250 ms: ABC • +650 ms: ABC • "
             stringByPaddingToLength:700 withString:@"Diagnostic text. " startingAtIndex:0]
             forKey:@"lastSwitchSummary"];
+        [controller setValue:@"root=window focusFrame=ok stop=window reached\nInitial: nodes=1800 depth=24 depthCuts=1 budget=exhausted textRoles=1200 missingFrames=0 geometry=0/1200 pruned=0 candidates=0\nFallback (1 scopes): nodes=1800 depth=24 depthCuts=1 budget=exhausted textRoles=1200 missingFrames=0 geometry=0/1200 pruned=0 candidates=0"
+            forKey:@"lastScanDiagnostics"];
         [controller updateInterface];
         NSWindow *window = [controller valueForKey:@"settingsWindow"];
         [window setContentSize:NSMakeSize(590, 450)];
@@ -43,6 +45,13 @@ int main(void) {
             scroll.contentView.bounds.size.width, scroll.contentView.bounds.size.height, labelRect.size.height);
         if (!fits) {
             fputs("FAIL: Settings diagnostics must fit the scrollable document.\n", stderr);
+            return 1;
+        }
+        NSTextField *scanLabel = [controller valueForKey:@"reasonLabel"];
+        NSRect scanRect = [scanLabel convertRect:scanLabel.bounds toView:document];
+        if (![scanLabel.stringValue containsString:@"Scan: root=window"] ||
+            scanRect.size.height <= 40 || NSMaxY(scanRect) > NSMinY(labelRect)) {
+            fputs("FAIL: Scan diagnostics must wrap and not overlap later fields.\n", stderr);
             return 1;
         }
 

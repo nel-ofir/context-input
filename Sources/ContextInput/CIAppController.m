@@ -29,6 +29,7 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
 @property(nonatomic, copy) NSString *lastContext;
 @property(nonatomic, copy) NSString *lastDecision;
 @property(nonatomic, copy) NSString *lastReason;
+@property(nonatomic, copy) NSString *lastScanDiagnostics;
 @property(nonatomic, copy) NSString *lastContextSamples;
 @property(nonatomic, copy) NSString *activeInputSourceName;
 @property(nonatomic, copy) NSString *lastSwitchSummary;
@@ -292,6 +293,7 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
     }
     self.lastApplication = context.applicationName;
     self.lastFocusDescription = context.focusDescription;
+    self.lastScanDiagnostics = context.scanDiagnostics != nil ? context.scanDiagnostics : @"—";
     self.lastContextItemCount = context.nearbyTexts.count;
     NSUInteger sampleCount = context.nearbyTexts.count < 3 ? context.nearbyTexts.count : 3;
     self.lastContextSamples = sampleCount > 0
@@ -899,9 +901,10 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
         ? [NSString stringWithFormat:@"Decision: %@ (%ld%%)", self.lastDecision, lround(self.lastConfidence * 100)]
         : [NSString stringWithFormat:@"Decision: %@", self.lastDecision];
     self.reasonLabel.stringValue = [NSString
-        stringWithFormat:@"Reason: %@ · Context items: %lu",
+        stringWithFormat:@"Reason: %@ · Context items: %lu\nScan: %@",
                          self.lastReason,
-                         (unsigned long)self.lastContextItemCount];
+                         (unsigned long)self.lastContextItemCount,
+                         self.lastScanDiagnostics != nil ? self.lastScanDiagnostics : @"—"];
     self.samplesLabel.stringValue = [NSString stringWithFormat:@"Nearest context: %@", self.lastContextSamples];
     self.contextLabel.stringValue = [NSString stringWithFormat:@"Evidence: %@", self.lastContext];
     self.switchLabel.stringValue = [NSString stringWithFormat:@"Last switch: %@", self.lastSwitchSummary];

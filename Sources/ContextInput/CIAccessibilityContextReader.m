@@ -14,6 +14,22 @@
 @implementation CIAccessibilityCandidate
 @end
 
+// Per-pass counters, with no message content or identifiers. Keep separate
+// initial/fallback totals so repeating a scan cannot disguise a truncated pass.
+typedef struct {
+    NSInteger nodes, maxDepth, depthCuts, textRoles, missingFrames;
+    NSInteger geometryRejected, geometryAccepted, pruned, candidates;
+} CIScanMetrics;
+
+static NSString *CIScanSummary(CIScanMetrics metrics, BOOL exhausted) {
+    return [NSString stringWithFormat:
+        @"nodes=%ld depth=%ld depthCuts=%ld budget=%@ textRoles=%ld missingFrames=%ld geometry=%ld/%ld pruned=%ld candidates=%ld",
+        (long)metrics.nodes, (long)metrics.maxDepth, (long)metrics.depthCuts,
+        exhausted ? @"exhausted" : @"ok", (long)metrics.textRoles,
+        (long)metrics.missingFrames, (long)metrics.geometryAccepted,
+        (long)metrics.geometryRejected, (long)metrics.pruned, (long)metrics.candidates];
+}
+
 static id _Nullable CIAXAttribute(AXUIElementRef element, CFStringRef name) {
     CFTypeRef copied = NULL;
     AXError error = AXUIElementCopyAttributeValue(element, name, &copied);
@@ -229,12 +245,14 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
         placeholder = accessibleValue;
     }
     if (rootObject == nil || CFGetTypeID((__bridge CFTypeRef)rootObject) != AXUIElementGetTypeID()) {
-        return [[CIScreenContext alloc] initWithApplicationName:applicationName
+        CIScreenContext *context = [[CIScreenContext alloc] initWithApplicationName:applicationName
                                              bundleIdentifier:bundleIdentifier
                                                          draft:draft
                                                    nearbyTexts:@[]
                                                   terminalLike:terminalLike
                                               focusDescription:focusDescription];
+        context.scanDiagnostics = @"No accessible window returned";
+        return context;
     }
 
     AXUIElementRef windowRoot = (__bridge AXUIElementRef)rootObject;
@@ -246,6 +264,8 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
                                                 focusedFrame:focusedFrame
                                              hasFocusedFrame:hasFocusedFrame];
     AXUIElementRef root = (__bridge AXUIElementRef)contextRootObject;
+    NSString *initialRoot = CFEqual(root, windowRoot) ? @"window" : @"container";
+    CIScanMetrics initialMetrics = {0}, fallbackMetrics = {0};
     NSMutableArray<CIAccessibilityCandidate *> *candidates = [NSMutableArray array];
     NSMutableSet *visited = [NSMutableSet set];
     // Web-based conversation views can be substantially deeper than native AppKit
@@ -257,42 +277,54 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
          focusedFrame:focusedFrame
        hasFocusedFrame:hasFocusedFrame
          fallbackScan:NO
+              metrics:&initialMetrics
                 depth:0
             remaining:&remaining
                visited:visited
             candidates:candidates
           terminalLike:terminalLike
        applicationName:applicationName];
+    BOOL initialExhausted = remaining <= 0;
 
     // A tall composer wrapper can satisfy the pane geometry even though the
     // message list is its sibling. Retry enclosing containers only after an
     // empty scan; preserve the focused-column filter and never leave this window.
     NSMutableSet *fallbackRoots = [NSMutableSet set];
     NSInteger fallbackScopes = 0;
+    NSString *stopReason = candidates.count > 0 ? @"initial candidates" :
+        (hasFocusedFrame ? @"scope limit" : @"missing focus frame");
     if (candidates.count == 0) [visited removeAllObjects];
     remaining = 1800;
     for (NSInteger level = 0; hasFocusedFrame && candidates.count == 0 &&
          remaining > 0 && level < 16; level++) {
-        if ([fallbackRoots containsObject:contextRootObject]) break;
+        if ([fallbackRoots containsObject:contextRootObject]) {
+            stopReason = @"scope cycle";
+            break;
+        }
         [fallbackRoots addObject:contextRootObject];
         fallbackScopes += 1;
         // First retry this root using the complete child list. VisibleChildren
         // can omit the transcript while still reporting composer controls.
         [self walkElement:root focused:focused focusedFrame:focusedFrame
-            hasFocusedFrame:hasFocusedFrame fallbackScan:YES depth:0 remaining:&remaining
+            hasFocusedFrame:hasFocusedFrame fallbackScan:YES metrics:&fallbackMetrics depth:0 remaining:&remaining
             visited:visited candidates:candidates terminalLike:terminalLike
             applicationName:applicationName];
-        if (candidates.count > 0 || CFEqual(root, windowRoot)) break;
+        if (candidates.count > 0 || CFEqual(root, windowRoot)) {
+            stopReason = candidates.count > 0 ? @"fallback candidates" : @"window reached";
+            break;
+        }
         id parentObject = CIAXAttribute(root, kAXParentAttribute);
         if (parentObject == nil ||
             CFGetTypeID((__bridge CFTypeRef)parentObject) != AXUIElementGetTypeID() ||
             [fallbackRoots containsObject:parentObject]) {
+            stopReason = @"missing or repeated parent";
             break;
         }
         AXUIElementRef parent = (__bridge AXUIElementRef)parentObject;
         NSString *parentRole = CIAXStringAttribute(parent, kAXRoleAttribute);
         if ([parentRole isEqualToString:@"AXApplication"] ||
             ([parentRole isEqualToString:@"AXWindow"] && !CFEqual(parent, windowRoot))) {
+            stopReason = @"window boundary";
             break;
         }
         contextRootObject = parentObject;
@@ -342,12 +374,19 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
         }
     }
 
-    return [[CIScreenContext alloc] initWithApplicationName:applicationName
+    CIScreenContext *context = [[CIScreenContext alloc] initWithApplicationName:applicationName
                                          bundleIdentifier:bundleIdentifier
                                                      draft:draft
                                                nearbyTexts:nearbyTexts
                                               terminalLike:terminalLike
                                           focusDescription:focusDescription];
+    context.scanDiagnostics = [NSString stringWithFormat:
+        @"root=%@ focusFrame=%@ stop=%@\nInitial: %@\nFallback (%ld scopes): %@",
+        initialRoot, hasFocusedFrame ? @"ok" : @"missing",
+        remaining <= 0 ? @"node budget" : stopReason,
+        CIScanSummary(initialMetrics, initialExhausted), (long)fallbackScopes,
+        CIScanSummary(fallbackMetrics, remaining <= 0)];
+    return context;
 }
 
 - (id)contextRootObjectForFocused:(AXUIElementRef)focused
@@ -397,15 +436,21 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
         focusedFrame:(CGRect)focusedFrame
       hasFocusedFrame:(BOOL)hasFocusedFrame
          fallbackScan:(BOOL)fallbackScan
+              metrics:(CIScanMetrics *)metrics
                depth:(NSInteger)depth
            remaining:(NSInteger *)remaining
               visited:(NSMutableSet *)visited
            candidates:(NSMutableArray<CIAccessibilityCandidate *> *)candidates
          terminalLike:(BOOL)terminalLike
       applicationName:(NSString *)applicationName {
-    if (*remaining <= 0 || depth > 24 || CFEqual(element, focused)) {
+    if (*remaining <= 0 || CFEqual(element, focused)) {
         return;
     }
+    // Web task views nest transcript text substantially deeper than their
+    // composer. Live diagnostics hit 24 with 186 omitted branches. Retain a
+    // finite recursion limit and the unchanged 1800-node budget; do not relax
+    // column/position filtering or cross into another window.
+    if (depth > 64) { metrics->depthCuts++; return; }
     *remaining -= 1;
 
     id elementObject = (__bridge id)element;
@@ -413,6 +458,8 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
         return;
     }
     [visited addObject:elementObject];
+    metrics->nodes++;
+    if (depth > metrics->maxDepth) metrics->maxDepth = depth;
 
     if (fallbackScan && hasFocusedFrame) {
         CGRect frame = CGRectZero;
@@ -421,6 +468,7 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
                 fmax(CGRectGetMinX(frame), CGRectGetMinX(focusedFrame));
             CGFloat minimumOverlap = fmin(36.0, fmin(frame.size.width, focusedFrame.size.width) * 0.18);
             if (overlap < minimumOverlap || CGRectGetMinY(frame) > CGRectGetMaxY(focusedFrame)) {
+                metrics->pruned++;
                 // Off-column sidebars/documents cannot supply conversation text.
                 // Prune the subtree so it cannot exhaust the fallback node budget.
                 return;
@@ -445,6 +493,7 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
         containsObject:role];
     BOOL terminalTextRole = terminalLike && [@[@"AXOutlineRow"] containsObject:role];
     if (standardTextRole || terminalTextRole) {
+        metrics->textRoles++;
         NSString *elementIdentifier = CIAXStringAttribute(element, kAXIdentifierAttribute);
         CGRect elementFrame = CGRectZero;
         if (CIAXFrame(element, &elementFrame)) {
@@ -452,6 +501,7 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
                                                                      focused:focusedFrame
                                                              hasFocusedFrame:hasFocusedFrame];
             if (score != nil) {
+                metrics->geometryAccepted++;
                 for (NSString *text in [self textValuesFromElement:element]) {
                     NSString *normalized = [self normalizedText:text];
                     normalized = [CIContextTextSanitizer
@@ -469,8 +519,13 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
                     candidate.frame = elementFrame;
                     candidate.score = score.doubleValue;
                     [candidates addObject:candidate];
+                    metrics->candidates++;
                 }
+            } else {
+                metrics->geometryRejected++;
             }
+        } else {
+            metrics->missingFrames++;
         }
     }
 
@@ -495,6 +550,7 @@ static BOOL CIAXFrame(AXUIElementRef element, CGRect *result) {
              focusedFrame:focusedFrame
              hasFocusedFrame:hasFocusedFrame
                 fallbackScan:fallbackScan
+                     metrics:metrics
                     depth:depth + 1
                 remaining:remaining
                    visited:visited

@@ -132,6 +132,69 @@ static void TestNoConversation(BOOL withDraft) {
     Expect(withDraft ? (decision != nil && decision.language == CIInputLanguageEnglish) : decision == nil,
         @"empty conversations abstain; existing drafts retain priority");
 }
+
+static void TestScanDiagnostics(NSString *scenario, NSString *expected) {
+    attributes = [NSMapTable strongToStrongObjectsMapTable];
+    id window = Node(@"AXWindow", CGRectMake(0, 0, 1400, 1000), nil);
+    id focus = Node(@"AXTextArea", CGRectMake(300, 870, 700, 80), @"");
+    id message = Node(@"AXStaticText", CGRectMake(300, 720, 650, 70), @"Private fixture text");
+    Children(window, @[message, focus]);
+    [attributes objectForKey:focus][@"AXWindow"] = window;
+    if ([scenario isEqualToString:@"missing frame"]) {
+        [[attributes objectForKey:message] removeObjectForKey:@"AXPosition"];
+    } else if ([scenario isEqualToString:@"geometry"]) {
+        id below = Node(@"AXStaticText", CGRectMake(300, 970, 650, 20), @"Private fixture text");
+        Children(window, @[below, focus]);
+    } else if ([scenario isEqualToString:@"depth"]) {
+        id child = message;
+        for (NSInteger i = 0; i < 70; i++) {
+            id wrapper = Node(@"AXGroup", CGRectMake(300, 700, 700, 140), nil);
+            Children(wrapper, @[child]);
+            child = wrapper;
+        }
+        Children(window, @[child, focus]);
+    } else if ([scenario isEqualToString:@"budget"]) {
+        NSMutableArray *children = [NSMutableArray arrayWithObject:message];
+        for (NSInteger i = 0; i < 1900; i++)
+            [children addObject:Node(@"AXButton", CGRectMake(300, 700, 30, 30), nil)];
+        [children addObject:focus];
+        Children(window, children);
+    } else if ([scenario isEqualToString:@"no children"]) {
+        Children(window, @[focus]);
+    } else if ([scenario isEqualToString:@"no window"]) {
+        [[attributes objectForKey:focus] removeObjectForKey:@"AXWindow"];
+    }
+    CIScreenContext *context = [[[CIAccessibilityContextReader alloc] init]
+        readContextAroundElement:(__bridge AXUIElementRef)focus];
+    Expect([context.scanDiagnostics containsString:expected],
+        [NSString stringWithFormat:@"%@ must explain its scan failure: %@", scenario, context.scanDiagnostics]);
+    Expect(![context.scanDiagnostics containsString:@"Private fixture text"],
+        @"scan diagnostics must contain metadata, not message content");
+    Expect(context.nearbyTexts.count == 0, @"diagnostic changes must preserve empty-result behavior");
+}
+
+static void TestDeepTranscript(NSString *body, CIInputLanguage expected) {
+    attributes = [NSMapTable strongToStrongObjectsMapTable];
+    id window = Node(@"AXWindow", CGRectMake(0, 0, 1400, 1000), nil);
+    id focus = Node(@"AXTextArea", CGRectMake(300, 870, 700, 80), @"");
+    id child = Node(@"AXStaticText", CGRectMake(300, 720, 650, 70), body);
+    // Transcript wrappers can be much deeper than the separately hosted composer.
+    // Keep the valid message inside the same column throughout the hierarchy.
+    for (NSInteger i = 0; i < 40; i++) {
+        id wrapper = Node(@"AXGroup", CGRectMake(300, 100, 700, 700), nil);
+        Children(wrapper, @[child]);
+        child = wrapper;
+    }
+    id sidebar = Node(@"AXStaticText", CGRectMake(0, 700, 240, 70), @"Unrelated sidebar text");
+    Children(window, @[sidebar, child, focus]);
+    [attributes objectForKey:focus][@"AXWindow"] = window;
+    CIScreenContext *context = [[[CIAccessibilityContextReader alloc] init]
+        readContextAroundElement:(__bridge AXUIElementRef)focus];
+    CILanguageDecision *decision = [[[CILanguageClassifier alloc] init]
+        classifyDraft:context.draft nearbyTexts:context.nearbyTexts];
+    Expect(context.nearbyTexts.count == 1 && decision != nil && decision.language == expected,
+        @"deep transcript must supply the active conversation body, not sidebar text");
+}
 int main(void) {
     @autoreleasepool {
         for (NSNumber *incomplete in @[@NO, @YES]) {
@@ -143,6 +206,14 @@ int main(void) {
         }
         TestNoConversation(NO);
         TestNoConversation(YES);
+        TestScanDiagnostics(@"missing frame", @"missingFrames=1");
+        TestScanDiagnostics(@"geometry", @"geometry=0/1");
+        TestScanDiagnostics(@"depth", @"depthCuts=1");
+        TestScanDiagnostics(@"budget", @"budget=exhausted");
+        TestScanDiagnostics(@"no children", @"nodes=1");
+        TestScanDiagnostics(@"no window", @"No accessible window returned");
+        TestDeepTranscript(@"המסמך מוכן לבדיקה, תודה רבה על העזרה.", CIInputLanguageHebrew);
+        TestDeepTranscript(@"The document is ready for review. Thank you for your help.", CIInputLanguageEnglish);
         if (failures) return 1;
         puts("Context reader layout tests passed.");
     }

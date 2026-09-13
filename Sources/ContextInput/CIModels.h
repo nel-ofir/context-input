@@ -37,6 +37,8 @@ FOUNDATION_EXPORT NSString *CIInputLanguageShortName(CIInputLanguage language);
 @property(nonatomic, copy) NSArray<NSString *> *nearbyTexts;
 @property(nonatomic) BOOL terminalLike;
 @property(nonatomic, copy) NSString *focusDescription;
+// Aggregate traversal metadata only; never an accessibility tree or transcript.
+@property(nonatomic, copy, nullable) NSString *scanDiagnostics;
 - (instancetype)initWithApplicationName:(NSString *)applicationName
                        bundleIdentifier:(nullable NSString *)bundleIdentifier
                                    draft:(nullable NSString *)draft
