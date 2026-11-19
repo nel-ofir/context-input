@@ -24,18 +24,21 @@ The chosen classifier is local, available on both Intel and Apple Silicon Macs s
 When focus moves to a normal editable text field, ContextInput:
 
 1. Ignores password/secure fields.
-2. Uses an existing draft first, so returning to a partially written reply keeps its language.
+2. Uses existing Hebrew or English text in the focused field first, so returning to a partially written reply keeps its language.
    URL- or email-only values are classified from their own Latin characters, so Safari's address bar selects English even on a Hebrew page.
-3. Reads recent visible conversation text in the focused window.
-4. Ranks text immediately above and horizontally near the focused field.
-5. Combines the recent messages, prioritizing substantive text and discounting short controls, URLs, filenames, and code-like content.
-6. Selects the configured Hebrew or English keyboard only when the decision is confident.
-7. Checks the reported source after 250 ms and 650 ms. It makes at most one delayed
+3. If the field is empty or its text is inconclusive, applies a Hebrew or English default configured for the focused app. This takes precedence over nearby conversation text.
+4. Otherwise, reads recent visible conversation text in the focused window.
+5. Ranks text immediately above and horizontally near the focused field.
+6. Combines the recent messages, prioritizing substantive text and discounting short controls, URLs, filenames, and code-like content.
+7. Selects the configured Hebrew or English keyboard only when the decision is confident.
+8. Checks the reported source after 250 ms and 650 ms. It makes at most one delayed
    retry if the source differs. Keyboard
    activity or a focus change cancels that retry. Settings preserves this history
    separately from its current-source display; real typing is the acceptance test.
 
 If an app does not expose readable Accessibility text, or the evidence is only emoji/punctuation, ContextInput does nothing. This fail-safe avoids disruptive guesses.
+
+In Settings → App Defaults, select a running app or choose its `.app` file, then set Hebrew or English. Choose **Use conversation** to remove that app's default. Rules are saved on this Mac by app identity. Existing text in the focused field always wins over the app default. Rules do not change the keyboard setting in other apps.
 
 Interactive terminals are detected through their accessibility role, editable value, xterm/terminal metadata, and declared shell-document capabilities. For GPU-rendered terminal apps that expose only an opaque window—or leave another app's focused element registered—ContextInput uses the frontmost terminal-capable application as a bounded fallback. Terminal content is classified when exposed; otherwise a focused terminal safely defaults to English.
 
@@ -79,7 +82,7 @@ free, friend-testable beta build with a stable identity and automatic updates:
 ./scripts/package-beta.sh
 ```
 
-This creates both `dist/releases/ContextInput-0.2.3-arm64.dmg` for installation
+This creates both `dist/releases/ContextInput-0.2.8-arm64.dmg` for installation
 and a signed ZIP used by the automatic updater. See
 [`docs/RELEASING.md`](docs/RELEASING.md) before publishing the GitHub release.
 

@@ -1,10 +1,12 @@
 #import "CIAppController.h"
 #import "CIAccessibilityContextReader.h"
+#import "CIAppLanguagePreferences.h"
 #import "CIInputSourceManager.h"
 #import "CILanguageClassifier.h"
 #import "CISwitchVerificationPolicy.h"
 #import <ServiceManagement/ServiceManagement.h>
 #import <Sparkle/Sparkle.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <math.h>
 
 static NSString *const CIEnabledDefaultsKey = @"enabled";
@@ -25,6 +27,7 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
 @property(nonatomic, copy) NSArray<CIKeyboardInputSource *> *inputSources;
 @property(nonatomic, copy) NSString *statusMessage;
 @property(nonatomic, copy) NSString *lastApplication;
+@property(nonatomic, copy) NSString *lastBundleIdentifier;
 @property(nonatomic, copy) NSString *lastFocusDescription;
 @property(nonatomic, copy) NSString *lastContext;
 @property(nonatomic, copy) NSString *lastDecision;
@@ -47,6 +50,7 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
 @property(nonatomic, strong) CIInputSourceManager *inputSourceManager;
 @property(nonatomic, strong) CIAccessibilityContextReader *contextReader;
 @property(nonatomic, strong) CILanguageClassifier *classifier;
+@property(nonatomic, strong) CIAppLanguagePreferences *appLanguagePreferences;
 @property(nonatomic, strong) SPUStandardUpdaterController *updaterController;
 
 @property(nonatomic, strong) NSStatusItem *statusItem;
@@ -57,6 +61,9 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
 @property(nonatomic, strong) NSButton *permissionButton;
 @property(nonatomic, strong) NSPopUpButton *englishPopup;
 @property(nonatomic, strong) NSPopUpButton *hebrewPopup;
+@property(nonatomic, strong) NSPopUpButton *appPopup;
+@property(nonatomic, strong) NSPopUpButton *appLanguagePopup;
+@property(nonatomic, copy) NSString *selectedAppIdentifier;
 @property(nonatomic, strong) NSButton *launchAtLoginCheckbox;
 @property(nonatomic, strong) NSTextField *activeSourceLabel;
 @property(nonatomic, strong) NSTextField *applicationLabel;
@@ -76,6 +83,8 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
         _inputSourceManager = [[CIInputSourceManager alloc] init];
         _contextReader = [[CIAccessibilityContextReader alloc] init];
         _classifier = [[CILanguageClassifier alloc] init];
+        _appLanguagePreferences = [[CIAppLanguagePreferences alloc]
+            initWithDefaults:NSUserDefaults.standardUserDefaults];
 
         NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
         _enabled = [defaults objectForKey:CIEnabledDefaultsKey] == nil
@@ -87,6 +96,8 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
         _hebrewSourceIdentifier = _hebrewSourceIdentifier != nil ? _hebrewSourceIdentifier : @"";
         _statusMessage = @"Starting…";
         _lastApplication = @"—";
+        _lastBundleIdentifier = @"";
+        _selectedAppIdentifier = @"";
         _lastFocusDescription = @"—";
         _lastContext = @"Focus a text box to begin";
         _lastDecision = @"—";
@@ -282,16 +293,9 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
     }
     self.switchSequence += 1;
 
-    CILanguageDecision *decision = [self.classifier classifyDraft:context.draft
-                                                      nearbyTexts:context.nearbyTexts];
-    if (decision == nil && context.terminalLike) {
-        decision = [[CILanguageDecision alloc]
-            initWithLanguage:CIInputLanguageEnglish
-                  confidence:1.0
-                    evidence:@"Terminal input defaults to English when no stronger text is available"
-                      reason:@"the focused terminal"];
-    }
+    CILanguageDecision *decision = [self decisionForContext:context];
     self.lastApplication = context.applicationName;
+    self.lastBundleIdentifier = context.bundleIdentifier != nil ? context.bundleIdentifier : @"";
     self.lastFocusDescription = context.focusDescription;
     self.lastScanDiagnostics = context.scanDiagnostics != nil ? context.scanDiagnostics : @"—";
     self.lastContextItemCount = context.nearbyTexts.count;
@@ -360,6 +364,31 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
     }
     [self verifySourceIdentifier:sourceIdentifier focused:focused];
     [self updateInterface];
+}
+
+- (nullable CILanguageDecision *)decisionForContext:(CIScreenContext *)context {
+    CILanguageDecision *draftDecision = [self.classifier classifyExistingDraft:context.draft];
+    if (draftDecision != nil) return draftDecision;
+
+    NSNumber *appLanguage = [self.appLanguagePreferences
+        languageForBundleIdentifier:context.bundleIdentifier];
+    if (appLanguage != nil) {
+        CIInputLanguage language = (CIInputLanguage)appLanguage.integerValue;
+        return [[CILanguageDecision alloc]
+            initWithLanguage:language confidence:1.0
+                     evidence:[NSString stringWithFormat:@"Default for %@", context.applicationName]
+                       reason:@"the app default"];
+    }
+    CILanguageDecision *decision = [self.classifier classifyDraft:nil
+                                                      nearbyTexts:context.nearbyTexts];
+    if (decision == nil && context.terminalLike) {
+        decision = [[CILanguageDecision alloc]
+            initWithLanguage:CIInputLanguageEnglish
+                  confidence:1.0
+                    evidence:@"Terminal input defaults to English when no stronger text is available"
+                      reason:@"the focused terminal"];
+    }
+    return decision;
 }
 
 - (void)verifySourceIdentifier:(NSString *)identifier
@@ -514,6 +543,66 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
     }
 }
 
+- (NSString *)displayNameForAppIdentifier:(NSString *)bundleIdentifier {
+    for (NSRunningApplication *application in NSWorkspace.sharedWorkspace.runningApplications) {
+        if ([application.bundleIdentifier isEqualToString:bundleIdentifier] &&
+            application.localizedName.length > 0) return application.localizedName;
+    }
+    NSURL *url = [NSWorkspace.sharedWorkspace URLForApplicationWithBundleIdentifier:bundleIdentifier];
+    NSBundle *bundle = url != nil ? [NSBundle bundleWithURL:url] : nil;
+    NSString *name = [bundle objectForInfoDictionaryKey:@"CFBundleDisplayName"];
+    if (name.length == 0) name = [bundle objectForInfoDictionaryKey:@"CFBundleName"];
+    return name.length > 0 ? name : bundleIdentifier;
+}
+
+- (void)reloadAppPopup {
+    if (self.appPopup == nil) return;
+    NSMutableSet<NSString *> *identifiers = [NSMutableSet setWithArray:
+        self.appLanguagePreferences.configuredBundleIdentifiers];
+    if (self.lastBundleIdentifier.length > 0) [identifiers addObject:self.lastBundleIdentifier];
+    if (self.selectedAppIdentifier.length > 0) [identifiers addObject:self.selectedAppIdentifier];
+    for (NSRunningApplication *application in NSWorkspace.sharedWorkspace.runningApplications) {
+        if (application.activationPolicy == NSApplicationActivationPolicyRegular &&
+            application.bundleIdentifier.length > 0) {
+            [identifiers addObject:application.bundleIdentifier];
+        }
+    }
+    if (NSBundle.mainBundle.bundleIdentifier.length > 0) {
+        [identifiers removeObject:NSBundle.mainBundle.bundleIdentifier];
+    }
+    NSArray<NSString *> *sorted = [identifiers.allObjects sortedArrayUsingComparator:
+        ^NSComparisonResult(NSString *left, NSString *right) {
+        NSString *leftName = [self displayNameForAppIdentifier:left];
+        NSString *rightName = [self displayNameForAppIdentifier:right];
+        NSComparisonResult result = [leftName localizedCaseInsensitiveCompare:rightName];
+        return result != NSOrderedSame ? result : [left compare:right];
+    }];
+    [self.appPopup removeAllItems];
+    [self.appPopup addItemWithTitle:@"Choose an app"];
+    self.appPopup.lastItem.representedObject = @"";
+    for (NSString *bundleIdentifier in sorted) {
+        NSString *title = [NSString stringWithFormat:@"%@ (%@)",
+            [self displayNameForAppIdentifier:bundleIdentifier], bundleIdentifier];
+        [self.appPopup addItemWithTitle:title];
+        self.appPopup.lastItem.representedObject = bundleIdentifier;
+        if ([bundleIdentifier isEqualToString:self.selectedAppIdentifier]) {
+            [self.appPopup selectItem:self.appPopup.lastItem];
+        }
+    }
+    if (self.selectedAppIdentifier.length == 0) [self.appPopup selectItemAtIndex:0];
+    [self updateAppLanguagePopup];
+}
+
+- (void)updateAppLanguagePopup {
+    if (self.appLanguagePopup == nil) return;
+    NSNumber *language = [self.appLanguagePreferences
+        languageForBundleIdentifier:self.selectedAppIdentifier];
+    NSInteger tag = language == nil ? 0 :
+        language.integerValue == CIInputLanguageHebrew ? 1 : 2;
+    [self.appLanguagePopup selectItemWithTag:tag];
+    self.appLanguagePopup.enabled = self.selectedAppIdentifier.length > 0;
+}
+
 - (void)setLaunchAtLogin:(BOOL)shouldLaunch {
     SMAppService *service = SMAppService.mainAppService;
     NSError *error = nil;
@@ -559,6 +648,46 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
     self.hebrewSourceIdentifier = identifier != nil ? identifier : @"";
     [self persistSourceSelections];
     [self clearLastFocus];
+}
+
+- (void)appPopupChanged:(NSPopUpButton *)sender {
+    NSString *identifier = sender.selectedItem.representedObject;
+    self.selectedAppIdentifier = identifier != nil ? identifier : @"";
+    [self updateAppLanguagePopup];
+}
+
+- (void)appLanguagePopupChanged:(NSPopUpButton *)sender {
+    if (self.selectedAppIdentifier.length == 0) return;
+    NSInteger tag = sender.selectedItem.tag;
+    NSNumber *language = tag == 1 ? @(CIInputLanguageHebrew) :
+        tag == 2 ? @(CIInputLanguageEnglish) : nil;
+    [self.appLanguagePreferences setLanguage:language
+                        forBundleIdentifier:self.selectedAppIdentifier];
+    [self clearLastFocus];
+    [self reloadAppPopup];
+}
+
+- (void)chooseApp:(id)sender {
+    NSOpenPanel *panel = [NSOpenPanel openPanel];
+    panel.allowedContentTypes = @[UTTypeApplicationBundle];
+    panel.canChooseFiles = YES;
+    panel.canChooseDirectories = NO;
+    panel.allowsMultipleSelection = NO;
+    panel.prompt = @"Choose App";
+    [panel beginSheetModalForWindow:self.settingsWindow completionHandler:^(NSModalResponse response) {
+        if (response != NSModalResponseOK) return;
+        NSString *bundleIdentifier = [NSBundle bundleWithURL:panel.URL].bundleIdentifier;
+        if (bundleIdentifier.length == 0 ||
+            [bundleIdentifier isEqualToString:NSBundle.mainBundle.bundleIdentifier]) {
+            NSAlert *alert = [[NSAlert alloc] init];
+            alert.messageText = @"Choose a different macOS app";
+            alert.informativeText = @"The selected app needs a bundle identifier.";
+            [alert beginSheetModalForWindow:self.settingsWindow completionHandler:nil];
+            return;
+        }
+        self.selectedAppIdentifier = bundleIdentifier;
+        [self reloadAppPopup];
+    }];
 }
 
 - (void)launchAtLoginChanged:(NSButton *)sender {
@@ -701,6 +830,10 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
         [self buildSettingsWindow];
     }
     [self refreshInputSources];
+    if (self.selectedAppIdentifier.length == 0 && self.lastBundleIdentifier.length > 0) {
+        self.selectedAppIdentifier = self.lastBundleIdentifier;
+    }
+    [self reloadAppPopup];
     [self updateInterface];
     [self.settingsWindow center];
     [self.settingsWindow makeKeyAndOrderFront:nil];
@@ -808,6 +941,43 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
     self.activeSourceLabel.textColor = NSColor.secondaryLabelColor;
     [stack addArrangedSubview:self.activeSourceLabel];
 
+    [stack addArrangedSubview:[self sectionHeading:@"APP DEFAULTS"]];
+    NSTextField *appDescription = [self wrappingLabel:
+        @"Used when the focused field is empty or unclear. Existing text wins."];
+    appDescription.textColor = NSColor.secondaryLabelColor;
+    [stack addArrangedSubview:appDescription];
+
+    self.appPopup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    self.appPopup.target = self;
+    self.appPopup.action = @selector(appPopupChanged:);
+    NSButton *chooseAppButton = [NSButton buttonWithTitle:@"Choose App…"
+                                                   target:self action:@selector(chooseApp:)];
+    NSStackView *appRow = [NSStackView stackViewWithViews:@[self.appPopup, chooseAppButton]];
+    appRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    appRow.alignment = NSLayoutAttributeCenterY;
+    appRow.spacing = 8;
+    [self.appPopup setContentHuggingPriority:NSLayoutPriorityDefaultLow
+                              forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [stack addArrangedSubview:appRow];
+    [appRow.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
+
+    self.appLanguagePopup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+    [self.appLanguagePopup addItemWithTitle:@"Use conversation"];
+    self.appLanguagePopup.lastItem.tag = 0;
+    [self.appLanguagePopup addItemWithTitle:@"Hebrew"];
+    self.appLanguagePopup.lastItem.tag = 1;
+    [self.appLanguagePopup addItemWithTitle:@"English"];
+    self.appLanguagePopup.lastItem.tag = 2;
+    self.appLanguagePopup.target = self;
+    self.appLanguagePopup.action = @selector(appLanguagePopupChanged:);
+    NSGridView *appLanguageGrid = [NSGridView gridViewWithViews:@[
+        @[[self label:@"Input language" font:[NSFont systemFontOfSize:13]], self.appLanguagePopup],
+    ]];
+    [appLanguageGrid columnAtIndex:0].width = 140;
+    [appLanguageGrid columnAtIndex:1].xPlacement = NSGridCellPlacementFill;
+    [stack addArrangedSubview:appLanguageGrid];
+    [appLanguageGrid.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
+
     [stack addArrangedSubview:[self sectionHeading:@"STARTUP"]];
     self.launchAtLoginCheckbox = [NSButton checkboxWithTitle:@"Launch ContextInput at login"
                                                        target:self
@@ -850,11 +1020,12 @@ static NSString *const CIHebrewSourceDefaultsKey = @"hebrewSourceID";
     [stack addArrangedSubview:privacy];
 
     for (NSView *view in stack.arrangedSubviews) {
-        if (view != keyboardGrid) {
+        if (view != keyboardGrid && view != appLanguageGrid && view != appRow) {
             [view.widthAnchor constraintLessThanOrEqualToAnchor:stack.widthAnchor].active = YES;
         }
     }
     [self reloadSourcePopups];
+    [self reloadAppPopup];
 }
 
 - (NSTextField *)label:(NSString *)text font:(NSFont *)font {

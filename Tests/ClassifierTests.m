@@ -254,6 +254,13 @@ int main(void) {
         CIExpect(draft.language == CIInputLanguageEnglish, @"existing draft wins");
         CIExpect([draft.reason isEqualToString:@"the existing draft"], @"draft reason is reported");
 
+        CIExpect([classifier classifyExistingDraft:@"א"].language == CIInputLanguageHebrew,
+                 @"a single Hebrew character in the focused field is enough to preserve Hebrew");
+        CIExpect([classifier classifyExistingDraft:@"a"].language == CIInputLanguageEnglish,
+                 @"a single English character in the focused field is enough to preserve English");
+        CIExpect([classifier classifyExistingDraft:@"?!"] == nil,
+                 @"punctuation-only field text leaves the app default in control");
+
         CILanguageDecision *urlField = [classifier
             classifyDraft:@"https://ecom.gov.il/voucherspa/confirmation/209"
                nearbyTexts:@[@"אתר ממשלתי בעברית"]];

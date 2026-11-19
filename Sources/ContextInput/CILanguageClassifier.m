@@ -5,7 +5,8 @@
 @interface CILanguageClassifier ()
 - (CILanguageDecision *)classifyText:(NSString *)text
                               reason:(NSString *)reason
-                          stripLinks:(BOOL)stripLinks;
+                          stripLinks:(BOOL)stripLinks
+                minimumScriptLetters:(NSUInteger)minimumScriptLetters;
 - (CILanguageDecision *)classifyConversationTexts:(NSArray<NSString *> *)nearbyTexts;
 - (CILanguageDecision *)classifyRepeatedMessageBodies:(NSArray<NSString *> *)nearbyTexts;
 - (CILanguageDecision *)classifyConversationTexts:(NSArray<NSString *> *)nearbyTexts
@@ -21,39 +22,47 @@
 
 - (CILanguageDecision *)classifyDraft:(NSString *)draft
                            nearbyTexts:(NSArray<NSString *> *)nearbyTexts {
+    CILanguageDecision *draftDecision = [self classifyExistingDraft:draft];
+    return draftDecision != nil ? draftDecision : [self classifyConversationTexts:nearbyTexts];
+}
+
+- (CILanguageDecision *)classifyExistingDraft:(NSString *)draft {
     if (draft.length > 0) {
         CILanguageDecision *draftDecision = [self classifyText:draft
                                                          reason:@"the existing draft"
-                                                     stripLinks:YES];
+                                                     stripLinks:YES
+                                           minimumScriptLetters:1];
         // A URL bar or an email-only field becomes empty after link stripping. In that
         // case the field's own Latin characters are still decisive and outrank the page.
         if (draftDecision == nil) {
             draftDecision = [self classifyText:draft
                                          reason:@"the existing field value"
-                                     stripLinks:NO];
+                                     stripLinks:NO
+                           minimumScriptLetters:1];
         }
         if (draftDecision != nil) {
             return draftDecision;
         }
     }
 
-    return [self classifyConversationTexts:nearbyTexts];
+    return nil;
 }
 
 - (CILanguageDecision *)classifyText:(NSString *)text reason:(NSString *)reason {
-    return [self classifyText:text reason:reason stripLinks:YES];
+    return [self classifyText:text reason:reason stripLinks:YES minimumScriptLetters:2];
 }
 
 - (CILanguageDecision *)classifyText:(NSString *)text
                               reason:(NSString *)reason
-                          stripLinks:(BOOL)stripLinks {
+                          stripLinks:(BOOL)stripLinks
+                minimumScriptLetters:(NSUInteger)minimumScriptLetters {
     NSString *cleaned = [self sanitizedText:text stripLinks:stripLinks];
     NSUInteger hebrewCount = 0;
     NSUInteger latinCount = 0;
     [self countScriptsInText:cleaned hebrew:&hebrewCount latin:&latinCount];
 
     NSUInteger total = hebrewCount + latinCount;
-    if (total < 2) {
+    if (total < minimumScriptLetters) {
         return nil;
     }
 
